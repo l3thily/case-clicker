@@ -1476,3 +1476,9 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) save(
 window.addEventListener('beforeunload', save);
 
 renderNav(); renderTop(); renderClicker(); checkAch();
+
+// Shareable catalogue link preserves the same origin and browser save.
+if (new URLSearchParams(location.search).get('cases') === 'custom') {
+  S.set.kind = 'custom';
+  showTab('cases');
+}
