@@ -371,3 +371,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--acc)}
   .upg .btn{grid-row:auto;grid-column:1/-1}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important}}
+
+/* Author case workshop and cosmetic crafts */
+.journey{display:grid;grid-template-columns:1.4fr 1fr;gap:24px;margin:6px 0 24px;padding:26px;border:1px solid rgba(120,160,255,.25);border-radius:18px;background:radial-gradient(ellipse at 0 0,rgba(105,90,220,.2),transparent 70%),var(--panel)}
+.journey small{color:#9dafff;font-size:10px;letter-spacing:.12em}.journey h2{margin:8px 0;font-size:26px}.journey p{color:var(--muted);max-width:580px;margin:0;font-size:13px}.journey-next{display:flex;flex-direction:column;justify-content:center;gap:9px;padding-left:24px;border-left:1px solid var(--line)}.journey-next span{color:var(--acc)}.journey-next small{letter-spacing:0;line-height:1.6;color:var(--muted);font-size:12px}
+.custom-desc,.custom-req{position:relative;display:block;margin-top:8px;color:var(--muted);font-size:11px;line-height:1.5}.custom-req{color:var(--acc);padding-top:10px;border-top:1px solid var(--line)}
+.progress-guide{display:flex;flex-direction:column;gap:7px;padding:16px;margin-top:16px;border:1px solid var(--line);border-radius:12px;text-align:left;background:rgba(105,167,255,.05)}.progress-guide b{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#9dafff}.progress-guide small{color:var(--muted);font-size:11px}
+.sticker-strip{display:flex;justify-content:center;gap:2px;position:relative}.sticker-strip img{width:24px!important;height:24px!important;aspect-ratio:1;object-fit:contain;filter:none!important}.sticker-strip.large img{width:48px!important;height:48px!important}
+.craft-slots{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:20px 0}.craft-slots button{display:flex;flex-direction:column;align-items:center;padding:8px 2px;min-width:0}.craft-slots img{width:100%;max-width:70px;aspect-ratio:1;object-fit:contain}.craft-slots small{font-size:10px}.craft-empty{display:grid;place-items:center;border:1px dashed var(--line2);border-radius:10px;min-height:90px;color:var(--muted);font-size:24px}.craft-grid{max-height:400px;overflow:auto}.craft-grid .item{cursor:pointer}
+@media(max-width:650px){.journey{grid-template-columns:1fr;padding:18px;gap:16px}.journey h2{font-size:23px}.journey-next{padding:16px 0 0;border-left:0;border-top:1px solid var(--line)}}
+.case-card[style]:hover{border-color:var(--case-accent)}.case-card[style] .custom-req{color:var(--case-accent)}

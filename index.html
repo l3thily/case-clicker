@@ -47,7 +47,7 @@
               <svg class="combo-ring" viewBox="0 0 200 200"><circle cx="100" cy="100" r="92" class="cr-bg"/><circle cx="100" cy="100" r="92" class="cr-fg" id="comboArc"/></svg>
               <button class="click-btn" id="clickBtn" aria-label="Клик"><img id="clickImg" alt="" draggable="false"></button>
             </div>
-            <div class="equip-line" id="equipLine"></div>
+            <div class="equip-line" id="equipLine"></div><div id="progressGuide" class="progress-guide"></div>
             <div class="daily" id="daily"></div>
           </div>
           <div class="side-panels">
@@ -77,6 +77,7 @@
           </select>
           <span class="muted" id="kindInfo"></span>
         </div>
+        <div id="caseJourney"></div>
         <div id="caseGrid" class="case-grid"></div>
       </section>
 
@@ -218,6 +219,7 @@
 <div class="toasts" id="toasts"></div>
 
 <script src="data/cases.js"></script>
+<script src="js/custom-cases.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>
