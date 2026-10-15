@@ -537,16 +537,23 @@ $('#missions').addEventListener('click', e => {
 });
 
 // ---------- кейсы и коллекции ----------
+const CUSTOM_SERIES = {all:'Все серии',classic:'Классика',rarity:'По редкости',weapon:'По оружию',theme:'Тематики',sticker:'Наклейки',elite:'Особые'};
+let customSeries = 'all', customAccess = 'all';
 function renderCases() {
   const kind = S.set.kind;
   $('#caseJourney').innerHTML = kind === 'custom' ? customJourney() : '';
+  $('#customFilters').hidden = kind !== 'custom';
+  if(kind === 'custom') {
+    $('#seriesFilters').innerHTML = Object.entries(CUSTOM_SERIES).map(([k,n])=>`<button class="${customSeries===k?'on':''}" data-series="${k}">${n} <small>${BOXES.filter(b=>b.k==='custom' && (k==='all'||b.series===k)).length}</small></button>`).join('');
+    $('#accessFilter').value = customAccess;
+  }
   $('#kindTabs').innerHTML = Object.entries(KINDS).map(([k, v]) => `<button data-kind="${k}" class="${k === kind ? 'on' : ''}">${v.ic} ${v.n} ${unlocked(v.unl) ? `<small>${BOXES.filter(b => b.k === k).length}</small>` : '🔒'}</button>`).join('');
   $('#caseSort option[value="new"]').textContent = kind === 'custom' ? 'По прогрессу' : 'Сначала новые';
   const K = KINDS[kind];
   $('#kindInfo').innerHTML = K.key ? `Ключ: <b>${fmt(keyPrice())}</b>` : 'Открывается без ключа';
   if (!unlocked(K.unl)) { $('#caseGrid').innerHTML = lockWall(K.unl); return; }
   const q = $('#caseSearch').value.trim().toLowerCase(), sort = $('#caseSort').value;
-  let list = BOXES.map((b, i) => ({ b, i })).filter(x => x.b.k === kind && x.b.n.toLowerCase().includes(q));
+  let list = BOXES.map((b, i) => ({ b, i })).filter(x => x.b.k === kind && [x.b.n,x.b.desc || ''].join(' ').toLowerCase().includes(q) && (kind !== 'custom' || ((customSeries === 'all' || x.b.series === customSeries) && (customAccess === 'all' || (customAccess === 'ready' ? customReady(x.b) : !customReady(x.b))))));
   if (kind === 'custom' && sort === 'new') list.sort((a,b) => a.b.opens-b.b.opens);
   if (sort === 'old') list.reverse();
   if (sort === 'cheap') list.sort((a, b) => a.b.p - b.b.p);
@@ -554,13 +561,16 @@ function renderCases() {
   $('#caseGrid').innerHTML = list.map(({ b, i }) => {
     const cost = boxCost(b);
     return `<div style="--case-accent:${b.color || 'var(--acc)'}" class="case-card ${canPay(cost) && customReady(b) ? '' : 'locked'}" data-box="${i}">
-      <span class="yr">${b.k === 'custom' ? (customReady(b) ? '✦ АВТОРСКИЙ' : '🔒 ЗАКРЫТ') : b.date.slice(0, 4)}</span>${b.g[6] ? '<span class="tag">★</span>' : ''}
+      <span class="yr">${b.k === 'custom' ? (customReady(b) ? CUSTOM_SERIES[b.series] || '✦ АВТОРСКИЙ' : '🔒 ЗАКРЫТ') : b.date.slice(0, 4)}</span>${b.g[6] ? '<span class="tag">★</span>' : ''}
       <img loading="lazy" src="${img(b.img)}" alt="">
       <div class="nm">${esc(b.n)}</div><div class="pr">${fmt(cost)}</div>${b.k === 'custom' ? `<small class="custom-desc">${esc(b.desc)}</small><small class="custom-req">${customReady(b) ? 'Без ключа · возврат ~' + Math.round(boxEV(b)/cost*100) + '%' : customRequirement(b)}</small>` : ''}</div>`;
-  }).join('') || '<div class="empty">Ничего не найдено</div>';
+  }).join('') || '<div class="empty">Ничего не найдено. Измените поиск или фильтры.</div>';
+  $('#customResult').textContent = kind === 'custom' ? `Показано ${list.length} из ${BOXES.filter(b=>b.k==='custom').length} · доступно ${list.filter(x=>customReady(x.b)).length}` : '';
 }
 RENDER.cases = renderCases;
 $('#kindTabs').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (b) { S.set.kind = b.dataset.kind; renderCases(); } });
+$('#seriesFilters').addEventListener('click', e=>{const b=e.target.closest('[data-series]');if(b){customSeries=b.dataset.series;renderCases();}});
+$('#accessFilter').addEventListener('change',e=>{customAccess=e.target.value;renderCases();});
 $('#caseSearch').addEventListener('input', renderCases);
 $('#caseSort').addEventListener('change', renderCases);
 $('#caseGrid').addEventListener('click', e => { const c = e.target.closest('[data-box]'); if (c) openBoxPage(+c.dataset.box); });
@@ -963,7 +973,8 @@ function renderUpCatalog() {
     if (q && !fullName(v.i, v.st).toLowerCase().includes(q)) continue;
     list.push(v);
   }
-  $('#upCatalog').innerHTML = list.map(v => itemCard(v, { price: v.p, cls: upTarget === v ? 'sel' : '', attr: `data-cat="${v.id}"` })).join('') || '<div class="empty">Ничего не найдено</div>';
+  $('#upCatalog').innerHTML = list.map(v => itemCard(v, { price: v.p, cls: upTarget === v ? 'sel' : '', attr: `data-cat="${v.id}"` })).join('') || '<div class="empty">Ничего не найдено. Измените поиск или фильтры.</div>';
+  $('#customResult').textContent = kind === 'custom' ? `Показано ${list.length} из ${BOXES.filter(b=>b.k==='custom').length} · доступно ${list.filter(x=>customReady(x.b)).length}` : '';
 }
 $('#upSearch').addEventListener('input', renderUpCatalog);
 $('#tab-upgrade').addEventListener('click', e => {
@@ -1021,7 +1032,8 @@ function renderMarket() {
     if (q && !fullName(v.i, v.st).toLowerCase().includes(q)) continue;
     list.push(v);
   }
-  $('#mkGrid').innerHTML = list.map(v => itemCard(v, { price: v.p, cls: canPay(v.p) ? '' : 'locked', attr: `data-buy="${v.id}"` })).join('') || '<div class="empty">Ничего не найдено</div>';
+  $('#mkGrid').innerHTML = list.map(v => itemCard(v, { price: v.p, cls: canPay(v.p) ? '' : 'locked', attr: `data-buy="${v.id}"` })).join('') || '<div class="empty">Ничего не найдено. Измените поиск или фильтры.</div>';
+  $('#customResult').textContent = kind === 'custom' ? `Показано ${list.length} из ${BOXES.filter(b=>b.k==='custom').length} · доступно ${list.filter(x=>customReady(x.b)).length}` : '';
 }
 RENDER.market = renderMarket;
 $('#mkTabs').addEventListener('click', e => { const b = e.target.closest('[data-mk]'); if (b) { S.set.mkKind = b.dataset.mk; renderMarket(); } });
