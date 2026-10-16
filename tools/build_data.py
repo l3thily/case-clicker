@@ -19,10 +19,11 @@ CDN = 'https://community.akamai.steamstatic.com/economy/image/'
 WEARS = ['Factory New', 'Minimal Wear', 'Field-Tested', 'Well-Worn', 'Battle-Scarred']
 # единая шкала редкости: 0 ширпотреб … 5 тайное, 6 ★ редкий особый
 TIER = {'Consumer Grade': 0, 'Base Grade': 0, 'Industrial Grade': 1, 'Mil-Spec Grade': 2, 'High Grade': 2,
-        'Restricted': 3, 'Remarkable': 3, 'Classified': 4, 'Exotic': 4, 'Covert': 5, 'Extraordinary': 5, 'Contraband': 5}
+        'Restricted': 3, 'Remarkable': 3, 'Classified': 4, 'Exotic': 4, 'Covert': 5, 'Extraordinary': 5, 'Contraband': 6}  # Howl — как нож
 # тип контейнера в данных → вид в игре
 KIND = {'Case': 'case', 'Souvenir': 'souvenir', 'Souvenir Highlight': 'souvenir', 'Sticker Capsule': 'sticker',
         'Autograph Capsule': 'autograph', 'Patch Capsule': 'patch', 'Pins': 'pin'}
+CONTRABAND = {'M4A4 | Howl': 'Huntsman Weapon Case'}
 # во сколько раз Steam дороже площадки (медиана по ~15 тыс. предметов, 2026-10-16)
 STEAM_RATIO = {'csfloat': 1.55, 'skinport': 1.45, 'buff163': 1.55}
 KEY_PRICE = 2.49
@@ -189,6 +190,14 @@ def main():
         boxes.append({'n': c['name'], 'img': short(c['image']), 'p': cp, 'date': date, 'k': kind,
                       'g': {str(t): v for t, v in sorted(pool.items())}})
 
+    # контрабанда: в данных у Howl нет ни кейса, ни коллекции (Valve убрала его из Huntsman в 2014).
+    # В игре он лежит в редком особом слоте Huntsman рядом с ножами.
+    for name, case in CONTRABAND.items():
+        b = next((b for b in boxes if b['n'] == case), None)
+        i = weapon(skins[name], 6) if b and name in skins else None
+        if i is not None and i not in b['g'].setdefault('6', []):
+            b['g']['6'].append(i)
+
     # коллекции карт и операций: скины, которых нет ни в одном оружейном кейсе, выпадают отсюда
     in_cases = {items[i]['n'] for b in boxes if b['k'] in ('case', 'terminal') for l in b['g'].values() for i in l}
     for c in collections:
@@ -216,7 +225,7 @@ def main():
         if t is None or not sk.get('image') or cat in ('Agents', None):
             continue
         weapon(sk, 6 if sk['name'].startswith('★ ') else t)
-        if sk.get('souvenir') and not sk['name'].startswith('★ '):
+        if sk.get('souvenir') and not sk['name'].startswith('★ ') and t != 6:
             weapon(sk, t, souvenir=True)
 
     order = {'case': 0, 'terminal': 1, 'collection': 2, 'souvenir': 3, 'sticker': 4, 'autograph': 5, 'patch': 6, 'pin': 7}

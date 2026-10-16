@@ -183,7 +183,7 @@ CATALOG.forEach((v, k) => { v.id = k; });
 
 // ---------- состояние ----------
 const SAVE_KEY = 'caseclicker.v2';
-const VERSION = '2026.10.16c';
+const VERSION = '2026.10.16d';
 const fresh = () => ({
   v: 2, money: 0.5, xp: 0, lvl: 1, medals: 0, rp: 0, uid: 1, inv: [], eq: null,
   up: Object.fromEntries(Object.keys(UPG).map(k => [k, 0])), unl: {},
@@ -1692,6 +1692,7 @@ renderNav(); renderTop(); renderClicker(); checkAch();
 if (S.set.seen !== VERSION) {
   if (S.st.opened || S.st.clicks) setTimeout(() => modal(`<h2>Обновление<button class="btn ghost" data-close>✕</button></h2>
     <ul class="news">
+      <li><b>🐺 M4A4 | Вой</b> теперь редкий особый предмет, как нож: выпадает из Huntsman Weapon Case вместе с ножами.</li>
       <li><b>🗂️ Все скины CS2.</b> Добавлены 50 коллекций карт и операций (Dust 2, Anubis, Boreal, Radiant, Ascent и др.): +765 скинов, которых не было ни в одном кейсе. Открываются в магазине, годятся для контрактов. Все скины есть на маркете и в апгрейдере.</li>
       <li><b>💲 Правильные цены.</b> Цена Steam сверяется с CSFloat, Skinport и Buff: если редкие сделки в Steam накручены или случайно дешёвые, берётся рыночная цена.</li>
       <li><b>Честные кейсы:</b> цена каждого контейнера считается от содержимого, ~80% возврата, всегда есть предметы дороже открытия. Dragon Lore в коблстоунах и холо Katowice 2014 на месте.</li>

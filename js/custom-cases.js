@@ -73,7 +73,7 @@ window.buildCustomCases = function (data) {
   add('sticker-cats','Кошачья контрабанда','Коты, лапки и пушистые мотивы','sticker','#ffacbf',7,40,1,{2:75,3:20,4:5},'s',/Cat|Kitty|Purr|Paw|Neko|Kawaii/i);
   add('craft-table','Стол крафтера','Бумага, голограммы, фольга и золото','sticker','#8ed3ac',14,125,4,{2:45,3:30,4:20,5:5},'s');
   const glove=/Gloves|Hand Wraps/i;
-  add('knife-vault','Оружейник: клинки','В каждом открытии нож','elite','#f6cb70',24,420,15,{6:100},'k',it=>!glove.test(it.n));
+  add('knife-vault','Оружейник: клинки','В каждом открытии нож','elite','#f6cb70',24,420,15,{6:100},'k',it=>it.n.startsWith('★ ')&&!glove.test(it.n));
   add('glove-box','Вторая кожа','В каждом открытии перчатки или обмотки','elite','#e7b999',23,390,12,{6:100},'k',it=>glove.test(it.n));
   add('butterfly-effect','Эффект бабочки','Только Butterfly Knife','elite','#c4a0ff',30,700,40,{6:100},'k',/Butterfly Knife/);
   add('karambit-orbit','Орбита керамбита','Только Karambit','elite','#ff9879',28,600,35,{6:100},'k',/Karambit/);
