@@ -431,3 +431,40 @@ input:focus,select:focus,textarea:focus{border-color:var(--acc)}
 .item .pat.hot{background:rgba(228,174,57,.25);color:var(--t6);box-shadow:0 0 10px rgba(228,174,57,.35)}
 .pat-txt{color:#c9b3ff}.pat-txt.hot{color:var(--t6)}
 .tile{min-width:0;overflow:hidden}.tile span{min-width:0}
+
+/* Мастерская наклеек */
+.modal-box:has(.craft){max-width:min(1100px,96vw)}
+.craft{display:grid;grid-template-columns:1.35fr 1fr;gap:18px}
+.craft-stage{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;background:radial-gradient(ellipse at 50% 60%,color-mix(in srgb,var(--c) 22%,transparent),transparent 70%),rgba(6,8,12,.6);border:1px solid var(--line)}
+.craft-weapon{position:relative;width:100%;aspect-ratio:4/3;user-select:none}
+.craft-weapon>img:first-child{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 14px 26px rgba(0,0,0,.7))}
+.craft-weapon .stk{position:absolute;width:13%;aspect-ratio:1;object-fit:contain;transform:translate(-50%,-50%) rotate(var(--r));filter:drop-shadow(0 2px 3px rgba(0,0,0,.6));pointer-events:none;animation:stickIn .3s cubic-bezier(.2,1.6,.4,1)}
+.craft-weapon .stk.ghost{opacity:.65;animation:pulse 1.2s ease-in-out infinite}
+@keyframes stickIn{from{transform:translate(-50%,-50%) rotate(var(--r)) scale(1.8);opacity:0}}
+.slot-dot{position:absolute;width:13%;aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;border:2px dashed rgba(255,255,255,.35);background:rgba(0,0,0,.25);color:rgba(255,255,255,.7);font:700 13px var(--hf);cursor:pointer;transition:.15s;z-index:2}
+.slot-dot.full{border-style:solid;border-color:transparent;background:transparent;color:transparent}
+.slot-dot:hover,.slot-dot.on{border-color:var(--acc);box-shadow:0 0 0 3px rgba(255,159,28,.25),0 0 18px rgba(255,159,28,.4)}
+.slot-dot.full.on{border-color:var(--acc)}
+.craft-info{display:flex;flex-direction:column;gap:2px}.craft-info span{color:var(--muted);font-size:12px}
+.craft-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:flex-end;min-height:40px}
+.craft-actions .muted{margin-right:auto;font-size:12px}
+.craft-side{display:flex;flex-direction:column;gap:10px;min-width:0}
+.craft-side .toolbar{margin:0}.craft-side input{width:100%}
+.craft-f{margin:0;flex-wrap:wrap}.craft-f button{padding:6px 11px;font-size:12px}
+.craft-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;max-height:420px;overflow:auto;padding-right:4px}
+.stk-card{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 6px 7px;border-radius:10px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(34,42,60,.6),rgba(14,18,27,.85));cursor:grab;color:inherit;text-align:center;min-width:0}
+.stk-card:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--c)}
+.stk-card img{width:64px;height:64px;object-fit:contain}
+.stk-card span{font-size:10.5px;line-height:1.2;max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.stk-card small{color:var(--good);font-weight:700;font-size:11px}
+.stk-card.on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc) inset}
+@media(max-width:760px){.craft{grid-template-columns:1fr}.craft-list{max-height:260px}}
+.slot-dot.on:not(.full){background:transparent}
+.craft-weapon{aspect-ratio:16/10}
+.craft-weapon .stk.ghost{z-index:1}
+
+#cloudAuth input {min-width:0;max-width:100%;flex:1 1 160px}
+#cloudPanel .game-row {flex-wrap:wrap;gap:10px}
+.cloud-table {display:grid;gap:6px;margin:12px 0;max-height:420px;overflow:auto}
+.cloud-table>div {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:9px 12px;background:rgba(255,255,255,.03);border-radius:8px}
+.cloud-table small {grid-column:1/-1;color:var(--muted);overflow-wrap:anywhere}

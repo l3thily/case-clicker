@@ -1,0 +1,6 @@
+
+# Case Clicker: nginx :80 -> cloud saves API 127.0.0.1:8093
+case-clicker.88-218-121-40.sslip.io {
+    encode gzip
+    reverse_proxy 172.18.0.1:80
+}

@@ -1,0 +1,8 @@
+[Unit]
+Description=Backup Case Clicker SQLite
+After=case-clicker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/case-clicker/backup.py
+UMask=0077

@@ -89,6 +89,15 @@ BOXES.forEach((b, bi) => Object.values(b.g).forEach(l => l.forEach(i => {
   const rank = k => (k === 'case' ? 0 : k === 'collection' ? 1 : 2); // для контрактов: кейс, затем коллекция
   if (cur == null || rank(b.k) < rank(BOXES[cur].k)) origin.set(i, bi);
 })));
+// фазы Doppler: в кейсе лежит базовый нож, при выпадении выбирается фаза по весам из данных
+const PHASE_BASE = new Map(); // предмет-фаза → базовый предмет
+ITEMS.forEach((it, i) => (it.phw || []).forEach(([p]) => { PHASE_BASE.set(p, i); if (origin.has(i)) origin.set(p, origin.get(i)); }));
+function resolvePhase(i, u = rnd()) {
+  const ph = ITEMS[i].phw; if (!ph) return i;
+  let r = u * ph.reduce((s, [, w]) => s + w, 0);
+  for (const [p, w] of ph) { if (r < w) return p; r -= w; }
+  return ph[ph.length - 1][0];
+}
 const inBoxes = new Map(); // предмет → все контейнеры, где он есть (для альбома)
 BOXES.forEach((b, bi) => Object.values(b.g).flat().forEach(i => { if (!inBoxes.has(i)) inBoxes.set(i, []); const l = inBoxes.get(i); if (l[l.length - 1] !== bi) l.push(bi); }));
 // альбом: все предметы контейнера, кроме ★ у обычных кейсов (их сотни, шанс 0.26%)
@@ -113,7 +122,7 @@ function variantPrice(i, w, st) {
   if (st) return nearest(it.st, w) ?? +((nearest(it.p, w) || 0.03) * 1.4).toFixed(2);
   return nearest(it.p, w) ?? 0.03;
 }
-const priceOf = x => +(variantPrice(x.i, ITEMS[x.i].v ? 0 : wearIdx(x.fl), x.st) * patternOf(x)[1]).toFixed(2);
+const priceOf = x => +(variantPrice(x.i, ITEMS[x.i].v ? 0 : wearIdx(x.fl), x.st) * patternOf(x)[1] * floatOf(x)[1] + stickerPremium(x)).toFixed(2);
 function nameParts(i, st) {
   const it = ITEMS[i];
   if (it.t === 's') return [it.n.slice(10), 'Наклейка'];
@@ -126,39 +135,42 @@ function nameParts(i, st) {
   if (it.t === 'sv') w = 'Сувенирный ' + w;
   return s ? [s, w] : [w, 'Ванильный'];
 }
-// ---------- паттерны ----------
-// Особый паттерн зависит от seed (0–999) и меняет цену предмета. Множители нормированы:
-// в среднем по всем seed семейство стоит ровно как на рынке, поэтому купить скин на маркете
-// и «выловить» паттерн в плюс нельзя — это лотерея внутри предмета.
-const BLUE_GEMS = new Set([661, 670, 321, 955, 151, 179, 555, 828, 760, 168, 592, 387, 809, 868, 442, 4, 32, 147, 278, 905]);
-const PHASES = s => { const ph = 1 + (s % 4); return [`Phase ${ph}`, [0.95, 1.25, 0.95, 1.15][ph - 1]]; };
-const PATTERNS = [
-  [/Gamma Doppler/, s => (s < 20 ? ['Emerald', 6] : PHASES(s))],
-  [/Doppler/, s => (s < 15 ? ['Ruby', 6] : s < 30 ? ['Sapphire', 7] : s < 40 ? ['Black Pearl', 4] : PHASES(s))],
-  [/Marble Fade/, s => (s < 25 ? ['Fire & Ice', 3.5] : s < 70 ? ['Fake Fire & Ice', 1.35] : s % 5 === 0 ? ['Tricolor', 1.15] : [null, 1])],
-  [/\| Fade/, s => { const f = 80 + (s * 7919 % 1000) / 999 * 20; return [`Fade ${f.toFixed(1)}%`, f >= 99.5 ? 1.6 : f >= 97 ? 1.25 : f >= 90 ? 1.05 : 0.9]; }],
-  [/Case Hardened/, (s, it) => (BLUE_GEMS.has(s) ? ['Blue Gem', it.t === 'k' || it.n.startsWith('AK-47') ? 15 : 5] : s % 100 < 10 ? ['Много синего', 1.6] : s % 100 < 40 ? [null, 1] : ['Золото', 0.9])],
-  [/Crimson Web/, s => (s % 100 < 6 ? ['Центральная паутина', 1.6] : s % 100 < 20 ? ['Две паутины', 1.15] : [null, 1])],
-  [/Slaughter/, s => (s % 100 < 4 ? ['Diamond', 1.4] : s % 100 < 9 ? ['Heart', 1.25] : s % 100 < 14 ? ['Angel', 1.15] : [null, 1])],
-  [/Fire Serpent/, s => (s % 100 < 5 ? ['Голова змеи', 1.5] : [null, 1])],
-  [/Hypnotic|Lore|Autotronic/, s => (s % 100 < 5 ? ['Идеальная сетка', 1.3] : [null, 1])],
-  [/Tiger Tooth|Damascus Steel|Rust Coat/, s => (s % 100 < 4 ? ['Редкий узор', 1.3] : [null, 1])],
-  [/Heat Treated|Blue Steel/, s => (s % 100 < 5 ? ['Синий отлив', 1.5] : [null, 1])],
-  [/Phoenix Blacklight|Wild Lotus|Gold Arabesque|Dragon Lore|Howl|Medusa|Fire Elemental|Asiimov|Printstream/, s => (s < 10 ? ['Тир-1 паттерн', 1.4] : [null, 1])],
-];
-const patCache = new Map(); // индекс предмета → [функция, норма] | null
-function patFamily(i) {
-  if (patCache.has(i)) return patCache.get(i);
-  const it = ITEMS[i], rule = isFlat(it) || it.v ? null : PATTERNS.find(([re]) => re.test(it.n));
-  let fam = null;
-  if (rule) { let sum = 0; for (let s = 0; s < 1000; s++) sum += rule[1](s, it)[1]; fam = [rule[1], sum / 1000]; }
-  patCache.set(i, fam); return fam;
+// ---------- паттерны, float, наклейки ----------
+// Рыночная цена = обычный экземпляр. Редкий паттерн, низкий/максимальный float и наклейки дают премию сверху.
+// Покупка на маркете всегда даёт обычный экземпляр (как самый дешёвый лот), поэтому заработать
+// на перепродаже нельзя; премии случаются только в дропе.
+const chBlue = window.VALUATION.chBlue;
+const patternOf = x => window.VALUATION.pattern(ITEMS[x.i], x.s);
+const floatOf = x => window.VALUATION.float(ITEMS[x.i], x.fl);
+// наклейки: часть их цены добавляется к скину (в CS2 обычно 5–10%, Katowice/Cologne 2014 — больше)
+const stickerKeys = x => (x.stickers || []).filter(Boolean);
+function stickerRate(n) { return /Katowice 2014|Cologne 2014|DreamHack 2014|Katowice 2015/.test(n) ? 0.2 : /\((Holo|Foil|Gold|Glitter|Lenticular)\)/.test(n) ? 0.08 : 0.05; }
+function stickerPremium(x) {
+  return stickerKeys(x).reduce((s, k) => { const i = KEYMAP.get(k); return i == null ? s : s + ITEMS[i].p[0] * stickerRate(ITEMS[i].n); }, 0);
 }
-function patternOf(x) { // → [название | null, множитель цены]
-  const fam = x.s == null ? null : patFamily(x.i);
-  if (!fam) return [null, 1];
-  const [name, m] = fam[0](x.s, ITEMS[x.i]);
-  return [name, m / fam[1]];
+// Case Hardened: перекрашиваем картинку по доле синего. SVG-фильтр считает «желтизну» пикселя (R−B)
+// и переводит золото в синий (или синий в золото при малой доле) — работает и с картинками Steam CDN без CORS.
+(function chFilters() {
+  const f = [];
+  for (let n = 0; n <= 10; n++) {
+    const bl = n * 10, toBlue = bl >= 35, k = toBlue ? Math.min(1, ((bl - 35) / 65) * 1.15) : ((35 - bl) / 35) * 0.6;
+    // маска: золото (G ≫ B, R ≈ G; дерево с R ≫ G не попадает) или синий (B ≫ R)
+    const mask = toBlue ? '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -6 14 -8 0 0' : '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -7 0 7 0 -0.15';
+    // перенос цвета: золото → синий или синий → золото, на долю k
+    const swap = toBlue
+      ? `${1 - k} 0 ${k} 0 0  0 ${1 - 0.45 * k} ${0.1 * k} 0 0  ${k} 0 ${1 - k} 0 0  0 0 0 1 0`
+      : `${1 - k} 0 ${k} 0 0  0 1 ${0.3 * k} 0 0  ${k} 0 ${1 - k} 0 0  0 0 0 1 0`;
+    f.push(`<filter id="ch${n}" color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="${mask}" result="m"/><feColorMatrix in="SourceGraphic" type="matrix" values="${swap}" result="s"/><feComposite in="s" in2="m" operator="in" result="t"/><feComposite in="t" in2="SourceGraphic" operator="over"/></filter>`);
+  }
+  document.body.insertAdjacentHTML('beforeend', `<svg width="0" height="0" style="position:absolute" aria-hidden="true">${f.join('')}</svg>`);
+})();
+function skinFilter(x) {
+  if (x.s == null || !/Case Hardened/.test(ITEMS[x.i].n)) return '';
+  return `filter:url(#ch${Math.round(chBlue(x.s) / 10)}) drop-shadow(0 8px 14px rgba(0,0,0,.6))`;
+}
+function skinImg(x, size, extra = '') {
+  const f = skinFilter(x);
+  return `<img ${extra} src="${img(ITEMS[x.i].img, size)}" alt=""${f ? ` style="${f}"` : ''}>`;
 }
 function fullName(i, st) {
   const it = ITEMS[i];
@@ -171,6 +183,7 @@ function fullName(i, st) {
 // каталог вариантов (маркет, апгрейд, боты джекпота)
 const CATALOG = [];
 ITEMS.forEach((it, i) => {
+  if (it.phw || it.hide) return; // базовый Doppler не продаётся — продаются конкретные фазы
   const [a, b] = it.f;
   const wears = it.v ? [0] : [0, 1, 2, 3, 4].filter(k => Math.min(b, WEAR[k].b) > Math.max(a, WEAR[k].a));
   for (const w of wears) {
@@ -194,8 +207,9 @@ const fresh = () => ({
 // в сохранении предметы хранятся по названию, а не индексу — данные пересобираются каждую неделю
 function packItem(x) { return { u: x.u, k: keyOf(ITEMS[x.i]), b: BOXES[x.c]?.n, fl: x.fl, st: x.st ? 1 : 0, s: x.s, t: x.t, stickers: x.stickers || [], f: x.fav ? 1 : 0 }; }
 function unpackItem(o) {
-  const i = KEYMAP.get(o.k); if (i == null) return null;
-  return { u: o.u, i, c: BOXMAP.get(o.b) ?? origin.get(i), fl: o.fl, st: !!o.st, s: o.s, t: o.t, stickers: (o.stickers || []).filter(k => KEYMAP.has(k)).slice(0,5), fav: !!o.f };
+  let i = KEYMAP.get(o.k); if (i == null) return null;
+  if (ITEMS[i].phw) i = resolvePhase(i, ((o.s ?? 0) + 0.5) / 1000); // старый Doppler без фазы → фаза по seed
+  return { u: o.u, i, c: BOXMAP.get(o.b) ?? origin.get(i), fl: o.fl, st: !!o.st, s: o.s, t: o.t, stickers: (o.stickers || []).slice(0, 5).map(k => (k && KEYMAP.has(k) ? k : null)), fav: !!o.f };
 }
 let S = fresh();
 try {
@@ -210,9 +224,11 @@ try {
     if (S.eq != null && !S.inv.some(x => x.u === S.eq)) S.eq = null;
   }
 } catch { S = fresh(); }
-S.inv.forEach(x => { S.found[keyOf(ITEMS[x.i])] = 1; });
+S.inv.forEach(x => { S.found[keyOf(ITEMS[PHASE_BASE.get(x.i) ?? x.i])] = 1; });
 BOXES.forEach(b => { if (!S.album[b.n] && albumPool(b).length && albumPool(b).every(i => S.found[keyOf(ITEMS[i])])) S.album[b.n] = Date.now(); });
+let replacingSave = false;
 function save() {
+  if (replacingSave) return;
   S.last = Date.now();
   try { localStorage.setItem(SAVE_KEY, JSON.stringify({ ...S, inv: S.inv.map(packItem) })); } catch {}
 }
@@ -360,10 +376,10 @@ function itemCard(x, o = {}) {
   const [title, sub] = nameParts(x.i, x.st);
   const price = o.price ?? (x.fl != null ? priceOf(x) : variantPrice(x.i, w ?? 2, x.st));
   return `<div class="item ${o.cls || ''}" style="--c:${tcol(it.r)}" ${o.attr || ''}><i class="shine"></i>
-    <span class="w">${w != null ? WEAR[w].s : ''}</span>${x.st ? '<span class="stt">ST™</span>' : it.t === 'sv' ? '<span class="stt sv">SV</span>' : ''}${x.fav ? '<span class="fav" title="Избранное">♥</span>' : ''}${o.got ? '<span class="got" title="Есть в альбоме">✓</span>' : ''}${x.s != null && patternOf(x)[0] ? `<span class="pat ${patternOf(x)[1] >= 1.5 ? 'hot' : ''}">${esc(patternOf(x)[0])}</span>` : ''}
-    <img loading="lazy" src="${img(it.img)}" alt="">
+    <span class="w">${w != null ? WEAR[w].s : ''}</span>${x.st ? '<span class="stt">ST™</span>' : it.t === 'sv' ? '<span class="stt sv">SV</span>' : ''}${x.fav ? '<span class="fav" title="Избранное">♥</span>' : ''}${o.got ? '<span class="got" title="Есть в альбоме">✓</span>' : ''}${x.s != null && (patternOf(x)[1] > 1 || floatOf(x)[1] > 1) ? `<span class="pat ${patternOf(x)[1] * floatOf(x)[1] >= 1.5 ? 'hot' : ''}">${esc(patternOf(x)[1] > 1 ? patternOf(x)[0] : floatOf(x)[0])}</span>` : ''}
+    ${x.fl != null ? skinImg(x, '256fx192f', 'loading="lazy"') : `<img loading="lazy" src="${img(it.img)}" alt="">`}
     <div class="nm">${esc(title)}</div><div class="sub">${esc(sub)}</div>
-    ${x.stickers?.length ? `<div class="sticker-strip">${stickerImages(x)}</div>` : ''}${o.extra || ''}<div class="pr">${fmt(price)}</div>${o.info ? `<button class="ibtn" data-info="${x.u}">i</button>` : ''}</div>`;
+    ${stickerKeys(x).length ? `<div class="sticker-strip">${stickerImages(x)}</div>` : ''}${o.extra || ''}<div class="pr">${fmt(price)}</div>${o.info ? `<button class="ibtn" data-info="${x.u}">i</button>` : ''}</div>`;
 }
 
 // ---------- навигация ----------
@@ -534,7 +550,7 @@ function renderClicker() {
   const src = x ? img(ITEMS[x.i].img, '512fx384f') : img(BOXES[0].img, '360fx270f');
   if ($('#clickImg').getAttribute('src') !== src) $('#clickImg').src = src;
   $('#equipLine').innerHTML = x
-    ? `${x.stickers?.length ? '<span class="sticker-strip">' + stickerImages(x) + '</span>' : ''}Экипировано: <b>${esc(fullName(x.i, x.st))}</b> · доход +${Math.round(eqBonus() * 100)}%`
+    ? `${stickerKeys(x).length ? '<span class="sticker-strip">' + stickerImages(x) + '</span>' : ''}Экипировано: <b>${esc(fullName(x.i, x.st))}</b> · доход +${Math.round(eqBonus() * 100)}%`
     : unlocked('equip') ? 'Экипируйте скин в инвентаре (кнопка «i») — он появится здесь и даст бонус' : '<span class="muted">Экипировка скинов открывается в магазине</span>';
   $('#quickUpg').innerHTML = Object.keys(UPG).filter(k => UPG[k].quick).map(upgRow).join('');
   renderDaily(); renderMissions(); renderCombo(); renderProgressGuide();
@@ -670,9 +686,10 @@ function albumBar(b) {
 }
 // первый дроп предмета отмечается в альбоме; полностью собранный контейнер даёт награду и +1% дохода
 function markFound(x) {
-  const k = keyOf(ITEMS[x.i]); if (S.found[k]) return;
+  const base = PHASE_BASE.get(x.i) ?? x.i;
+  const k = keyOf(ITEMS[base]); if (S.found[k]) return;
   S.found[k] = 1;
-  for (const bi of inBoxes.get(x.i) || []) {
+  for (const bi of inBoxes.get(base) || []) {
     const b = BOXES[bi];
     if (S.album[b.n] || !albumPool(b).every(i => S.found[keyOf(ITEMS[i])])) continue;
     S.album[b.n] = Date.now();
@@ -751,13 +768,22 @@ function rollTier(b) {
   return odds[odds.length - 1][0];
 }
 function newItem(i, c, o = {}) {
+  i = resolvePhase(i);
   const it = ITEMS[i];
   let [a, b] = it.f;
   if (o.w != null && !it.v) { a = Math.max(a, WEAR[o.w].a); b = Math.min(b, WEAR[o.w].b); }
   const fl = isFlat(it) ? 0 : (o.fl ?? (a + rnd() * (b - a)));
   const box = BOXES[c];
   const st = o.st ?? (!!it.st && !!box && box.k !== 'souvenir' && box.k !== 'collection' && rnd() < 0.1 + 0.01 * S.up.stattrak);
-  return { u: S.uid++, i, c, fl: Math.min(0.999999, +fl.toFixed(6)), st: !!st, s: Math.floor(rnd() * 1000), t: Date.now() };
+  const x = { u: S.uid++, i, c, fl: Math.min(0.999999, +fl.toFixed(6)), st: !!st, s: Math.floor(rnd() * 1000), t: Date.now() };
+  // маркет продаёт обычный экземпляр: без редкого паттерна и премиального float
+  for (let k = 0; o.plain && k < 60 && (patternOf(x)[1] > 1 || floatOf(x)[1] > 1); k++) { x.s = Math.floor(rnd() * 1000); x.fl = Math.min(0.999999, +(a + rnd() * (b - a)).toFixed(6)); }
+  if (o.plain && patternOf(x)[1] > 1) x.s = Array.from({ length: 1000 }, (_, seed) => seed).find(seed => window.VALUATION.pattern(it, seed)[1] === 1) ?? 0;
+  if (o.plain && floatOf(x)[1] > 1) {
+    const w = wearIdx(x.fl), lo = Math.max(a, [.01, .075, .16, .38, .45][w]), hi = Math.min(b, w === 4 ? .99 : b);
+    x.fl = +((lo + hi) / 2).toFixed(6);
+  }
+  return x;
 }
 function rollDrop(bi) {
   const b = BOXES[bi], i = pick(b.g[rollTier(b)]);
@@ -772,7 +798,7 @@ function trackDrop(x) {
   if (it.t === 's') S.st.stickers++;
   if (it.t === 'sv') S.st.souvenirs++;
   if (!it.v && !isFlat(it) && x.fl < S.st.lowFloat) S.st.lowFloat = x.fl;
-  const [pat, pm] = patternOf(x);
+  const [pat0, pm0] = patternOf(x), [fl0, fm0] = floatOf(x), pm = pm0 * fm0, pat = pm0 >= fm0 ? pat0 : fl0;
   if (pat && pm >= 1.5) { toast('💎 Редкий паттерн: ' + pat, `${fullName(x.i, x.st)} · ${fmt(p)}`, 'gold'); S.st.rarePats = (S.st.rarePats || 0) + 1; }
   if (!S.st.best || p > S.st.best.p) S.st.best = { k: keyOf(it), st: x.st, p };
   ev('tier', 1, { tier: it.r });
@@ -833,16 +859,17 @@ $('#openBtn').addEventListener('click', async () => {
 function dropDetails(x) {
   const it = ITEMS[x.i], [title, sub] = nameParts(x.i, x.st), plain = it.v || isFlat(it);
   return `<div class="drop" style="--c:${tcol(it.r)}"><div class="rays"></div>
-    <img src="${img(it.img, '512fx384f')}" alt="">
+    ${x.fl != null ? skinImg(x, '512fx384f', 'class="drop-img"') : `<img src="${img(it.img, '512fx384f')}" alt="">`}
     <div class="nm" style="color:${tcol(it.r)}">${esc(title)}</div>
     <div class="meta">${esc(sub)} · ${tierName(it)}${plain ? '' : ' · ' + WEAR[wearIdx(x.fl)].n}</div>
     ${plain ? '' : `<div class="float-bar"><i style="left:${x.fl * 100}%"></i></div><div class="meta">Float ${x.fl.toFixed(6)} · паттерн ${x.s}${patLine(x)}</div>`}
     <div class="meta small">${esc(BOXES[x.c]?.n || '')}</div>
-    ${x.stickers?.length ? `<div class="sticker-strip large">${stickerImages(x)}</div>` : ''}<div class="pr">${fmt(priceOf(x))}</div></div>`;
+    ${stickerKeys(x).length ? `<div class="sticker-strip large">${stickerImages(x)}</div><div class="meta small">Наклейки: +${fmt(stickerPremium(x))} к цене</div>` : ''}<div class="pr">${fmt(priceOf(x))}</div></div>`;
 }
 function patLine(x) {
-  const [name, m] = patternOf(x);
-  return name ? ` · <b class="pat-txt ${m >= 1.5 ? 'hot' : ''}">${esc(name)}</b> (${m >= 1 ? '+' : ''}${Math.round((m - 1) * 100)}% к цене)` : '';
+  const out = [];
+  for (const [name, m] of [patternOf(x), floatOf(x)]) if (name) out.push(`<b class="pat-txt ${m >= 1.5 ? 'hot' : ''}">${esc(name)}</b>${m > 1 ? ` (+${Math.round((m - 1) * 100)}%)` : ''}`);
+  return out.length ? ' · ' + out.join(' · ') : '';
 }
 function celebrate(top) {
   const cols = top === 6 ? ['#e4ae39', '#ffd45c', '#fff6d5', '#ff9f1c'] : [tcol(top), '#fff', tcol(Math.max(0, top - 1))];
@@ -882,24 +909,92 @@ function renderProgressGuide() {
 function stickerImages(x) {
   return (x.stickers || []).map(k => KEYMAP.get(k)).filter(i => i != null).map(i => `<img src="${img(ITEMS[i].img, '128fx96f')}" title="${esc(ITEMS[i].n)}" alt="${esc(ITEMS[i].n)}">`).join('');
 }
-function showStickerCraft(u) {
-  const weapon = S.inv.find(x => x.u === u); if (!weapon || ITEMS[weapon.i].t !== 'w') return;
-  const attached = weapon.stickers || [], available = S.inv.filter(x => ITEMS[x.i].t === 's');
-  modal(`<h2>Мастерская наклеек<button class="btn ghost" data-close>✕</button></h2><p>${esc(fullName(weapon.i,weapon.st))} · ${attached.length}/5</p><p class="muted">Наклейка расходуется при нанесении. Оформление косметическое: цена продажи и бонус дохода скина не растут. Снятая наклейка уничтожается.</p><div class="craft-slots">${Array.from({length:5},(_,i)=>attached[i] ? `<button class="btn" data-peel="${i}" title="Снять и уничтожить">${stickerImages({stickers:[attached[i]]})}<small>Снять ×</small></button>` : '<div class="craft-empty">+</div>').join('')}</div><div class="item-grid craft-grid">${attached.length >= 5 ? '<p>Все пять мест заняты.</p>' : available.length ? available.slice(0,120).map(x=>itemCard(x,{attr:`data-apply="${x.u}"`,extra:'<small>Нанести →</small>'})).join('') : '<p class="muted">Нужны наклейки из инвентаря. Ищите их в авторском кейсе «Стикербомб» или в капсулах.</p>'}</div>`,box=>{
-    box.querySelectorAll('[data-apply]').forEach(btn=>btn.onclick=()=>{
-      const sticker = S.inv.find(x=>x.u===+btn.dataset.apply);
-      if(!sticker || ITEMS[sticker.i].t!=='s' || (weapon.stickers || []).length>=5)return;
-      weapon.stickers=[...(weapon.stickers || []),keyOf(ITEMS[sticker.i])]; removeUids(new Set([sticker.u])); save(); renderTop();renderNav();RENDER[curTab]();showStickerCraft(u);
-    });
-    box.querySelectorAll('[data-peel]').forEach(btn=>btn.onclick=()=>{
-      const slot=+btn.dataset.peel;
-      modal(`<h2>Снять наклейку?</h2><p>Наклейка будет уничтожена. Вернуть её в инвентарь нельзя.</p><div class="modal-actions"><button class="btn" id="peelCancel">Оставить</button><button class="btn primary" id="peelConfirm">Снять и уничтожить</button></div>`,confirm=>{
-        $('#peelCancel',confirm).onclick=()=>showStickerCraft(u);
-        $('#peelConfirm',confirm).onclick=()=>{weapon.stickers.splice(slot,1);save();RENDER[curTab]();showStickerCraft(u);};
-      });
-    });
-  });
+// ---------- мастерская наклеек ----------
+// 5 мест на превью оружия: координаты и наклон наклеек.
+const SLOT_POS = [[0.27, 0.43, -8], [0.4, 0.45, -4], [0.55, 0.49, 0], [0.65, 0.57, 4], [0.81, 0.5, 8]];
+const STK_FILTERS = { all: ['Все', () => true], holo: ['Holo', n => /\(Holo\)/.test(n)], foil: ['Foil', n => /\(Foil\)/.test(n)], gold: ['Gold', n => /\(Gold\)/.test(n)], glitter: ['Glitter', n => /\(Glitter\)/.test(n)], y14: ['2014', n => /2014/.test(n)] };
+const craft = { u: 0, slot: 0, pick: null, q: '', f: 'all' };
+function stickerOn(k, slot, cls = '') {
+  const i = KEYMAP.get(k), [x, y, r] = SLOT_POS[slot];
+  return i == null ? '' : `<img class="stk ${cls}" src="${img(ITEMS[i].img, '128fx96f')}" style="left:${x * 100}%;top:${y * 100}%;--r:${r}deg" alt="" title="${esc(ITEMS[i].n)}">`;
 }
+function showStickerCraft(u, keep) {
+  const weapon = S.inv.find(x => x.u === u); if (!weapon || ITEMS[weapon.i].t !== 'w') return;
+  if (!keep) Object.assign(craft, { u, slot: Math.max(0, [0, 1, 2, 3, 4].find(k => !(weapon.stickers || [])[k]) ?? 0), pick: null, q: '', f: 'all' });
+  modal(`<h2>Мастерская наклеек<button class="btn ghost" data-close>✕</button></h2><div id="craftBody"></div>`, renderCraft);
+}
+function renderCraft(box = $('#modalBox')) {
+  const weapon = S.inv.find(x => x.u === craft.u), body = $('#craftBody', box); if (!weapon || !body) return;
+  const st = weapon.stickers || [], it = ITEMS[weapon.i], free = [0, 1, 2, 3, 4].filter(k => !st[k]).length;
+  // наклейки инвентаря, сгруппированные по названию
+  const groups = new Map();
+  for (const x of S.inv) {
+    if (ITEMS[x.i].t !== 's') continue;
+    const n = ITEMS[x.i].n;
+    if (craft.q && !n.toLowerCase().includes(craft.q)) continue;
+    if (!STK_FILTERS[craft.f][1](n)) continue;
+    const g = groups.get(n) || { x, n: 0 }; g.n++; groups.set(n, g);
+  }
+  const list = [...groups.values()].sort((a, b) => priceOf(b.x) - priceOf(a.x));
+  const pickItem = craft.pick && S.inv.find(x => x.u === craft.pick);
+  const gain = pickItem ? ITEMS[pickItem.i].p[0] * stickerRate(ITEMS[pickItem.i].n) : 0;
+  body.innerHTML = `<div class="craft">
+    <div class="craft-stage" style="--c:${tcol(it.r)}">
+      <div class="craft-weapon">${skinImg(weapon, '512fx384f', 'draggable="false"')}
+        ${SLOT_POS.map((_, k) => st[k] ? stickerOn(st[k], k) : '').join('')}
+        ${pickItem && !st[craft.slot] ? stickerOn(keyOf(ITEMS[pickItem.i]), craft.slot, 'ghost') : ''}
+        ${SLOT_POS.map(([x, y], k) => `<button class="slot-dot ${k === craft.slot ? 'on' : ''} ${st[k] ? 'full' : ''}" data-slot="${k}" style="left:${x * 100}%;top:${y * 100}%" title="Место ${k + 1}">${st[k] ? '' : k + 1}</button>`).join('')}
+      </div>
+      <div class="craft-info"><b>${esc(fullName(weapon.i, weapon.st))}</b>
+        <span>Цена ${fmt(priceOf(weapon))} · наклейки +${fmt(stickerPremium(weapon))} · мест свободно ${free}/5</span></div>
+      <div class="craft-actions">${st[craft.slot]
+        ? `<span class="muted">Место ${craft.slot + 1}: ${esc(ITEMS[KEYMAP.get(st[craft.slot])]?.n || '')}</span><button class="btn danger" id="craftPeel">Соскоблить</button>`
+        : pickItem ? `<span class="muted">Предпросмотр на месте ${craft.slot + 1} · к цене скина +${fmt(gain)}</span><button class="btn" id="craftCancel">Отмена</button><button class="btn primary" id="craftApply">Нанести</button>`
+        : '<span class="muted">Выберите место на оружии и наклейку справа — или перетащите наклейку на место</span>'}</div>
+    </div>
+    <div class="craft-side">
+      <div class="toolbar"><input id="craftQ" type="search" placeholder="Поиск наклейки" value="${esc(craft.q)}"></div>
+      <div class="subtabs craft-f">${Object.entries(STK_FILTERS).map(([k, [n]]) => `<button data-cf="${k}" class="${k === craft.f ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <div class="craft-list">${list.length ? list.slice(0, 200).map(({ x, n }) => `<button class="stk-card ${craft.pick === x.u ? 'on' : ''}" draggable="true" data-stk="${x.u}" style="--c:${tcol(ITEMS[x.i].r)}">
+        <img src="${img(ITEMS[x.i].img, '128fx96f')}" alt="" draggable="false"><span>${esc(nameParts(x.i)[0])}</span><small>${fmt(priceOf(x))}${n > 1 ? ' · ×' + n : ''}</small></button>`).join('')
+        : '<p class="muted">Нет наклеек. Ищите их в капсулах или в авторском кейсе «Стикербомб».</p>'}</div>
+      <p class="muted small">Наклейка расходуется. К цене скина добавляется 5% её цены (Holo/Foil/Gold — 8%, мейджоры 2014 — 20%). Соскобленная наклейка уничтожается.</p>
+    </div></div>`;
+  const q = $('#craftQ', body); q.oninput = () => { craft.q = q.value.trim().toLowerCase(); renderCraft(); const n = $('#craftQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); };
+}
+function applySticker(slot, stickerU) {
+  const weapon = S.inv.find(x => x.u === craft.u), sticker = S.inv.find(x => x.u === stickerU);
+  if (!weapon || !sticker || ITEMS[weapon.i].t !== 'w' || ITEMS[sticker.i].t !== 's' || !Number.isInteger(slot) || slot < 0 || slot > 4 || (weapon.stickers || [])[slot]) return;
+  const arr = (weapon.stickers || []).slice(); while (arr.length < 5) arr.push(null);
+  arr[slot] = keyOf(ITEMS[sticker.i]); weapon.stickers = arr;
+  removeUids(new Set([sticker.u])); beep('coin');
+  craft.pick = null; craft.slot = [0, 1, 2, 3, 4].find(k => !arr[k]) ?? slot;
+  save(); renderTop(); renderNav(); RENDER[curTab] && RENDER[curTab](); renderCraft();
+  const el = $('.craft-weapon'); if (el) { const r = el.getBoundingClientRect(); FX.burst(r.left + r.width * SLOT_POS[slot][0], r.top + r.height * SLOT_POS[slot][1], ['#fff', '#ffc15e', tcol(ITEMS[sticker.i].r)], 30, 5, true); }
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#craftBody')) return;
+  const t = e.target.closest('[data-slot],[data-stk],[data-cf],#craftApply,#craftCancel,#craftPeel'); if (!t) return;
+  if (t.dataset.slot) { craft.slot = +t.dataset.slot; renderCraft(); }
+  else if (t.dataset.stk) { craft.pick = craft.pick === +t.dataset.stk ? null : +t.dataset.stk; renderCraft(); }
+  else if (t.dataset.cf) { craft.f = t.dataset.cf; renderCraft(); }
+  else if (t.id === 'craftApply') applySticker(craft.slot, craft.pick);
+  else if (t.id === 'craftCancel') { craft.pick = null; renderCraft(); }
+  else if (t.id === 'craftPeel') {
+    const slot = craft.slot;
+    modal(`<h2>Соскоблить наклейку?</h2><p class="muted">Наклейка будет уничтожена, вернуть её нельзя.</p><div class="modal-actions"><button class="btn" id="peelCancel">Оставить</button><button class="btn danger" id="peelConfirm">Соскоблить</button></div>`, c => {
+      $('#peelCancel', c).onclick = () => showStickerCraft(craft.u, true);
+      $('#peelConfirm', c).onclick = () => { const w = S.inv.find(x => x.u === craft.u); if (w && w.stickers) w.stickers[slot] = null; save(); RENDER[curTab] && RENDER[curTab](); showStickerCraft(craft.u, true); };
+    });
+  }
+});
+// перетаскивание наклейки на место
+document.addEventListener('dragstart', e => { const t = e.target.closest?.('[data-stk]'); if (t) { e.dataTransfer.setData('text/plain', t.dataset.stk); e.dataTransfer.effectAllowed = 'copy'; } });
+document.addEventListener('dragover', e => { if (e.target.closest?.('.slot-dot:not(.full)')) e.preventDefault(); });
+document.addEventListener('drop', e => {
+  const d = e.target.closest?.('.slot-dot:not(.full)'); if (!d) return;
+  e.preventDefault(); applySticker(+d.dataset.slot, +e.dataTransfer.getData('text/plain'));
+});
 
 // ---------- инвентарь ----------
 const INV_KINDS = { all: ['Все', () => true], fav: ['♥ Избранное', (it, x) => x.fav], w: ['Оружие', it => it.t === 'w' || it.t === 'sv'], k: ['★ Ножи и перчатки', it => it.t === 'k'], s: ['Наклейки', it => it.t === 's'], p: ['Нашивки и пины', it => it.t === 'patch' || it.t === 'pin'] };
@@ -951,7 +1046,7 @@ $('#sellCheap').addEventListener('click', () => {
     <p class="muted" id="cheapInfo"></p>`, box => {
     const upd = () => {
       const lim = +$('#cheapLim', box).value || 0;
-      const l = S.inv.filter(x => ITEMS[x.i].r < 6 && x.u !== S.eq && !x.fav && !(x.stickers || []).length && priceOf(x) < lim);
+      const l = S.inv.filter(x => ITEMS[x.i].r < 6 && x.u !== S.eq && !x.fav && !stickerKeys(x).length && priceOf(x) < lim);
       $('#cheapInfo', box).textContent = `${l.length} предм. на ${fmt(l.reduce((s, x) => s + priceOf(x), 0))}`;
       return l;
     };
@@ -979,7 +1074,7 @@ function showItem(u) {
     <div class="modal-actions"><button class="btn primary" id="iSell">Продать · ${fmt(priceOf(x))}</button>
     ${canEq ? `<button class="btn" id="iEq">${S.eq === u ? 'Снять' : 'Экипировать (+' + Math.round(0.2 * Math.log10(1 + priceOf(x)) * 100) + '% дохода)'}</button>` : ''}
     <button class="btn" id="iFav">${x.fav ? '♡ Убрать из избранного' : '♥ В избранное'}</button>
-    ${ITEMS[x.i].t === 'w' ? '<button class="btn" id="iCraft">Наклейки · ' + (x.stickers || []).length + '/5</button>' : ''}<button class="btn" data-close>Закрыть</button></div>`,
+    ${ITEMS[x.i].t === 'w' ? '<button class="btn" id="iCraft">Наклейки · ' + stickerKeys(x).length + '/5</button>' : ''}<button class="btn" data-close>Закрыть</button></div>`,
   box => {
     $('#iSell', box).onclick = () => { if (x.fav) { toast('Предмет в избранном', 'Сначала уберите его из избранного'); return; } sellUids([u]); closeModal(); RENDER[curTab](); };
     const craft = $('#iCraft', box); if (craft) craft.onclick = () => showStickerCraft(u);
@@ -1003,7 +1098,7 @@ const tuItems = () => tuSel.map(u => S.inv.find(x => x.u === u)).filter(Boolean)
 const tuCap = () => { const l = tuItems(); return l.length && ITEMS[l[0].i].r === 5 ? 5 : 10; };
 function tuOk(x) {
   const it = ITEMS[x.i], b = BOXES[x.c];
-  return !(x.stickers || []).length && it.t === 'w' && !!b && ['case', 'terminal', 'collection'].includes(b.k) && !!b.g[it.r + 1];
+  return !stickerKeys(x).length && it.t === 'w' && !!b && ['case', 'terminal', 'collection'].includes(b.k) && !!b.g[it.r + 1];
 }
 function tuEligible(x) {
   if (!tuOk(x) || x.u === S.eq) return false;
@@ -1150,7 +1245,7 @@ $('#tab-upgrade').addEventListener('click', e => {
       removeUids(new Set(upSel)); upSel = [];
       addXP(15);
       if (win) {
-        const x = newItem(t.i, origin.get(t.i), { w: t.w, st: t.st });
+        const x = newItem(t.i, origin.get(t.i), { w: t.w, st: t.st, plain: true });
         S.inv.push(x); trackDrop(x); S.st.upWins++; wheel.classList.add('win'); beep('rare');
         const b = wheel.getBoundingClientRect(); FX.burst(b.left + b.width / 2, b.top + b.height / 2, ['#3ee08f', '#fff', tcol(ITEMS[t.i].r)], 120);
         toast('Апгрейд успешен!', fullName(t.i, t.st) + ' · ' + fmt(t.p), 'good');
@@ -1197,7 +1292,7 @@ $('#mkGrid').addEventListener('click', e => {
     <div class="modal-actions"><button class="btn primary" id="buyGo" ${canPay(v.p) ? '' : 'disabled'}>Купить</button><button class="btn" data-close>Отмена</button></div>`, box => {
     $('#buyGo', box).onclick = () => {
       if (!pay(v.p)) return;
-      const x = newItem(v.i, origin.get(v.i), { w: v.w, st: v.st });
+      const x = newItem(v.i, origin.get(v.i), { w: v.w, st: v.st, plain: true });
       S.inv.push(x); S.st.bought++; save(); renderTop(); renderNav(); closeModal(); renderMarket(); beep('coin');
       toast('Куплено', fullName(v.i, v.st), 'good'); checkAch();
     };
@@ -1552,7 +1647,7 @@ GA.addEventListener('click', e => {
   setTimeout(() => {
     busyGame = false;
     if (win.me) {
-      players.filter(p => !p.me).forEach(p => p.items.forEach(v => S.inv.push(newItem(v.i, origin.get(v.i), { w: v.w, st: v.st }))));
+      players.filter(p => !p.me).forEach(p => p.items.forEach(v => S.inv.push(newItem(v.i, origin.get(v.i), { w: v.w, st: v.st, plain: true }))));
       S.st.gameWins++; S.st.jackpots++; ev('game'); S.st.gambleNet += pot - myVal;
       toast('Вы выиграли джекпот!', fmt(pot), 'gold'); beep('rare');
       FX.burst(innerWidth / 2, innerHeight / 2, ['#ffd45c', '#ff9f1c', '#fff', '#3ee08f'], 180, 13);
@@ -1653,7 +1748,7 @@ $('#importSave').addEventListener('click', () => {
       try {
         const o = JSON.parse(decodeURIComponent(escape(atob($('#loadCode', box).value.trim()))));
         if (typeof o.money !== 'number' || !Array.isArray(o.inv)) throw 0;
-        localStorage.setItem(SAVE_KEY, JSON.stringify(o)); location.reload();
+        localStorage.setItem(SAVE_KEY, JSON.stringify(o)); replacingSave = true; location.reload();
       } catch { toast('Неверный код', '', 'bad'); }
     };
   });
@@ -1692,12 +1787,11 @@ renderNav(); renderTop(); renderClicker(); checkAch();
 if (S.set.seen !== VERSION) {
   if (S.st.opened || S.st.clicks) setTimeout(() => modal(`<h2>Обновление<button class="btn ghost" data-close>✕</button></h2>
     <ul class="news">
-      <li><b>🐺 M4A4 | Вой</b> теперь редкий особый предмет, как нож: выпадает из Huntsman Weapon Case вместе с ножами.</li>
-      <li><b>🗂️ Все скины CS2.</b> Добавлены 50 коллекций карт и операций (Dust 2, Anubis, Boreal, Radiant, Ascent и др.): +765 скинов, которых не было ни в одном кейсе. Открываются в магазине, годятся для контрактов. Все скины есть на маркете и в апгрейдере.</li>
-      <li><b>💲 Правильные цены.</b> Цена Steam сверяется с CSFloat, Skinport и Buff: если редкие сделки в Steam накручены или случайно дешёвые, берётся рыночная цена.</li>
-      <li><b>Честные кейсы:</b> цена каждого контейнера считается от содержимого, ~80% возврата, всегда есть предметы дороже открытия. Dragon Lore в коблстоунах и холо Katowice 2014 на месте.</li>
-      <li><b>💎 Паттерны:</b> Ruby, Sapphire, Black Pearl, Emerald, Fire &amp; Ice, Fade %, Blue Gem и другие.</li>
-      <li><b>🎯 Лента ×5 / ×10</b> останавливается точно на выпавшем предмете.</li>
+      <li><b>☁ Облако и рейтинг.</b> В профиле можно создать аккаунт и перенести прогресс на другое устройство. Выберите сохранение — дальше оно обновляется автоматически. Рейтинги по капиталу, лучшему дропу, открытиям, батлам и званию.</li>
+      <li><b>💎 Настоящие фазы Doppler.</b> Phase 1–4, Ruby, Sapphire, Black Pearl и Emerald — отдельные картинки и рыночные цены.</li>
+      <li><b>🔬 Float и Case Hardened.</b> Редкий float добавляет премию. Цвет Case Hardened меняется по игровому паттерну: больше синего — выше цена.</li>
+      <li><b>🏷️ Мастерская наклеек.</b> Пять мест, предпросмотр, поиск и фильтры; наклейку можно перетащить на оружие. Часть её цены добавляется к скину.</li>
+      <li><b>💲 Проверка цен.</b> Обновления рынка проходят тесты экономики до публикации. В цену открытия включены премии за float и паттерны.</li>
     </ul><div class="modal-actions"><button class="btn primary" data-close>Играть</button></div>`), 900);
   S.set.seen = VERSION; save();
 }

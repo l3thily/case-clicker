@@ -92,7 +92,7 @@ window.buildCustomCases = function (data) {
     for(const [tier,weight] of Object.entries(weights)) {
       const target=budget*(tier==6?30:tier==5?5:tier==4?2: tier==3?1:.4);
       const candidates=data.items.flatMap((it,i)=>{
-        if(it.r!==+tier || !(type==='mixed' ? ['w','k'].includes(it.t) : it.t===type))return [];
+        if(it.ph || it.hide || it.r!==+tier || !(type==='mixed' ? ['w','k'].includes(it.t) : it.t===type))return []; // фазы Doppler выбираются при выпадении
         if(match && !(typeof match==='function' ? match(it) : match.test(it.n)))return [];
         if(from && !fromPools.get(from)?.has(i))return [];
         const possible=it.v?[0]:[2,1,3,0,4].filter(w=>it.p[w]>0 && Math.min(it.f[1],bounds[w][1])-Math.max(it.f[0],bounds[w][0])>.00001);
@@ -110,7 +110,7 @@ window.buildCustomCases = function (data) {
     if(!Object.keys(g).length)return null; // A removed theme is hidden, never filled with unrelated drops.
     const odds=Object.fromEntries(Object.keys(g).map(t=>[t,weights[t]]));
     const total=Object.values(odds).reduce((a,b)=>a+b,0);
-    const ev=Object.entries(g).reduce((sum,[t,ids])=>sum+odds[t]/total*ids.reduce((s,i)=>s+data.items[i].p[variants[i]],0)/ids.length,0);
+    const ev=Object.entries(g).reduce((sum,[t,ids])=>sum+odds[t]/total*ids.reduce((s,i)=>s+data.items[i].p[variants[i]]*VALUATION.patternMean(data.items[i])*VALUATION.floatMean(data.items[i],Math.max(data.items[i].f[0],[0,.07,.15,.38,.45][variants[i]]),Math.min(data.items[i].f[1],[.07,.15,.38,.45,1][variants[i]])),0)/ids.length,0);
     return {n,k:'custom',id,desc,color,series,level,opens,rtp,variants,weights:odds,g,p:Math.max(.1,Math.ceil(ev/rtp*100-1e-8)/100),date:'2026-10-15',img:'./assets/custom/'+id+'.svg'};
   }).filter(Boolean);
 };

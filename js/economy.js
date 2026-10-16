@@ -20,18 +20,26 @@
     if (st) return near(it.st, w) ?? +((near(it.p, w) || 0.03) * 1.4).toFixed(2);
     return near(it.p, w) ?? 0.03;
   }
-  function itemEV(it, b, i, stBase = 0.1) {
-    if (b.variants) return price(it, b.variants[i], false);
+  function itemEV(it, b, i, stBase = 0.1, items) {
+    if (it.phw && items) {
+      const total = it.phw.reduce((sum, pair) => sum + pair[1], 0);
+      return it.phw.reduce((sum, [pi, weight]) => sum + weight / total * itemEV(items[pi], b, pi, stBase, items), 0);
+    }
+    if (b.variants) {
+      const w = b.variants[i], a = Math.max(it.f[0], WEAR[w][0]), z = Math.min(it.f[1], WEAR[w][1]);
+      return price(it, w, false) * VALUATION.patternMean(it) * VALUATION.floatMean(it, a, z);
+    }
     if (it.v) return price(it, 0, false);
     const [a, c] = it.f, span = Math.max(c - a, 1e-6), stp = it.st && b.k !== 'souvenir' && b.k !== 'collection' ? stBase : 0; // из коллекций StatTrak™ не падает
     let ev = 0;
     WEAR.forEach(([lo, hi], k) => {
       const ov = Math.max(0, Math.min(c, hi) - Math.max(a, lo));
-      if (ov) ev += ov / span * ((1 - stp) * price(it, k, false) + stp * price(it, k, true));
+      if (ov) ev += ov / span * ((1 - stp) * price(it, k, false) + stp * price(it, k, true)) * VALUATION.floatMean(it, Math.max(a, lo), Math.min(c, hi));
     });
-    return ev;
+    return ev * VALUATION.patternMean(it);
   }
-  function itemMax(it, b, i) {
+  function itemMax(it, b, i, items) {
+    if (it.phw && items) return Math.max(...it.phw.map(([p]) => itemMax(items[p], b, p))); // самая дорогая фаза (Ruby, Black Pearl)
     if (b.variants) return price(it, b.variants[i], false);
     return Math.max(...it.p.filter(v => v != null), ...(b.k !== 'souvenir' && b.k !== 'collection' && it.st ? it.st.filter(v => v != null) : []), 0.03);
   }
@@ -42,8 +50,8 @@
     const s = w.reduce((x, y) => x + y, 0);
     return ts.map((t, k) => [t, w[k] / s]);
   }
-  const boxEV = (data, b, luck = 0, st = 0.1) => odds(b, luck).reduce((s, [t, p]) => s + p * b.g[t].reduce((a, i) => a + itemEV(data.items[i], b, i, st), 0) / b.g[t].length, 0);
-  const boxMax = (data, b) => Math.max(...Object.values(b.g).flat().map(i => itemMax(data.items[i], b, i)));
+  const boxEV = (data, b, luck = 0, st = 0.1) => odds(b, luck).reduce((s, [t, p]) => s + p * b.g[t].reduce((a, i) => a + itemEV(data.items[i], b, i, st, data.items), 0) / b.g[t].length, 0);
+  const boxMax = (data, b) => Math.max(...Object.values(b.g).flat().map(i => itemMax(data.items[i], b, i, data.items)));
   // полная цена открытия (с ключом): 80% возврата, но не дороже 95% самого дорогого предмета,
   // если только так возврат не превысит 95%
   function fairCost(ev, max) {

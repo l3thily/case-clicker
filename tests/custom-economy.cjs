@@ -1,7 +1,7 @@
 // node tests/custom-economy.cjs — exact expected returns, pools and deterministic rebuild.
 const assert = require('node:assert/strict');
 global.window=global;
-require('../data/cases.js');require('../js/custom-cases.js');
+require('../data/cases.js');require('../js/valuation.js');require('../js/custom-cases.js');
 const boxes=buildCustomCases(GAME_DATA);
 assert.equal(boxes.length,64);
 assert.equal(new Set(boxes.map(b=>b.id)).size,64);
@@ -16,7 +16,7 @@ for(const b of boxes){
   for(const i of pool){
    const it=GAME_DATA.items[i],w=b.variants[i];assert.equal(it.r,+tier);assert.ok(it.p[w]>0);
    if(!it.v)assert.ok(Math.min(it.f[1],boundaries[w][1])>Math.max(it.f[0],boundaries[w][0]));
-   expected+=b.weights[tier]/total/pool.length*it.p[w];
+   expected+=b.weights[tier]/total/pool.length*it.p[w]*VALUATION.patternMean(it)*VALUATION.floatMean(it,Math.max(it.f[0],boundaries[w][0]),Math.min(it.f[1],boundaries[w][1]));
   }
  }
  const rtp=expected/b.p;

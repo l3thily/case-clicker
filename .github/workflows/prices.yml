@@ -13,9 +13,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - run: |
           python3 tools/build_data.py
           python3 tools/version_assets.py
+      # если новые цены ломают экономику (кейс без предметов дороже открытия, возврат > 95%,
+      # пропал Dragon Lore / холо Katowice 2014) — шаг падает, коммита нет, на сайте старые цены
+      - run: |
+          node tests/containers.cjs
+          node tests/custom-economy.cjs > /dev/null
       - run: |
           git diff --quiet data/cases.js index.html && exit 0
           git config user.name "github-actions[bot]"

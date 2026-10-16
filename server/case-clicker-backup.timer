@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Case Clicker backup
+
+[Timer]
+OnCalendar=*-*-* 03:40:00
+RandomizedDelaySec=600
+Persistent=yes
+
+[Install]
+WantedBy=timers.target

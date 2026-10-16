@@ -23,6 +23,8 @@ TIER = {'Consumer Grade': 0, 'Base Grade': 0, 'Industrial Grade': 1, 'Mil-Spec G
 # тип контейнера в данных → вид в игре
 KIND = {'Case': 'case', 'Souvenir': 'souvenir', 'Souvenir Highlight': 'souvenir', 'Sticker Capsule': 'sticker',
         'Autograph Capsule': 'autograph', 'Patch Capsule': 'patch', 'Pins': 'pin'}
+# игровые веса фаз Doppler / Gamma Doppler внутри одного ножа
+PHASE_W = {'Phase 1': 24, 'Phase 2': 24, 'Phase 3': 24, 'Phase 4': 24, 'Ruby': 1.5, 'Sapphire': 1.5, 'Black Pearl': 1, 'Emerald': 2}
 CONTRABAND = {'M4A4 | Howl': 'Huntsman Weapon Case'}
 # во сколько раз Steam дороже площадки (медиана по ~15 тыс. предметов, 2026-10-16)
 STEAM_RATIO = {'csfloat': 1.55, 'skinport': 1.45, 'buff163': 1.55}
@@ -141,6 +143,61 @@ def main():
             rec['v'] = 1
         return add(key, rec)
 
+    def phase_price(name, phase):
+        # цена фазы есть только на площадках (в Steam все фазы под одним именем)
+        refs = []
+        for src, ratio in ((csfloat, STEAM_RATIO['csfloat']), (buff, STEAM_RATIO['buff163'])):
+            e = src.get(name) or {}
+            d = e.get('doppler') or (e.get('starting_at') or {}).get('doppler') or {}
+            if d.get(phase):
+                refs.append(d[phase] * ratio)
+        refs.sort()
+        return round(refs[len(refs) // 2], 2) if refs else None
+
+    def add_phase(it, base):
+        # фаза — отдельный предмет «★ Karambit | Doppler (Ruby)» со своей картинкой и ценой;
+        # в кейсе лежит базовый предмет, фаза выбирается при выпадении по PHASE_W
+        phase = it.get('phase')
+        if base is None or not phase or phase not in PHASE_W:
+            return
+        b = items[base]
+        key = b['n'] + f' ({phase})'
+        if key in index:
+            return
+        star = b['n'].startswith('★ ')
+        st_base = ('★ StatTrak™ ' + b['n'][2:]) if star else 'StatTrak™ ' + b['n']
+        p = [phase_price(f"{b['n']} ({w})", phase) if b['p'][k] is not None else None for k, w in enumerate(WEARS)]
+        st = [phase_price(f'{st_base} ({w})', phase) if b['st'] and b['st'][k] is not None else None for k, w in enumerate(WEARS)]
+        for arr in (p, st):  # лот в 3+ раза дороже других износов той же фазы — выброс
+            for k, v in enumerate(arr):
+                rest = [x for j, x in enumerate(arr) if x and j != k]
+                if v and rest and v > 3 * max(rest):
+                    arr[k] = None
+        if not any(p):
+            return
+        rec = dict(b, n=key, img=short(it['image']), p=p, st=st if any(st) else None, ph=phase)
+        rec.pop('phw', None)
+        i = add(key, rec)
+        b.setdefault('phw', []).append([i, PHASE_W[phase]])
+
+    def finish_phases():
+        # цена базового предмета = средняя по фазам с учётом шансов, чтобы ожидаемая стоимость кейса была честной
+        for b in items:
+            if not b.get('phw'):
+                continue
+            if len(b['phw']) < 4:  # цены нашлись не у всех фаз — фазы не включаем, предмет как раньше
+                for i, _ in b.pop('phw'):
+                    items[i]['hide'] = 1
+                continue
+            for arr in ('p', 'st'):
+                if not b.get(arr):
+                    continue
+                for k in range(5):
+                    vals = [(items[i][arr][k] if items[i].get(arr) else None, w) for i, w in b['phw']]
+                    vals = [(v, w) for v, w in vals if v]
+                    if vals and b[arr][k] is not None:
+                        b[arr][k] = round(sum(v * w for v, w in vals) / sum(w for _, w in vals), 2)
+
     def flat(it, tier, kind, guess=None):
         name = it['name']
         mk = {'sticker': 'Sticker | ', 'autograph': 'Sticker | ', 'patch': 'Patch | ', 'pin': ''}[kind] + name
@@ -169,6 +226,8 @@ def main():
                 continue
             if kind in ('case', 'terminal', 'souvenir'):
                 i = weapon(it, t, souvenir=kind == 'souvenir')
+                if kind != 'souvenir':
+                    add_phase(it, i)
             else:
                 i = flat(it, t, kind)
                 if i is None:
@@ -182,8 +241,9 @@ def main():
                 pool[t].append(flat(it, t, kind, guess=same[len(same) // 2]))
         seen = set()
         for it in c['contains_rare']:
+            add_phase(it, weapon(it, 6))
             if it['name'] in seen:
-                continue  # фазы доплера — одна запись, цена Steam у них общая
+                continue  # фазы доплера — в кейсе одна запись, фаза выбирается при выпадении
             seen.add(it['name'])
             i = weapon(it, 6)
             if i is not None:
@@ -230,12 +290,13 @@ def main():
         t = TIER.get((sk.get('rarity') or {}).get('name'))
         if t is None or not sk.get('image') or cat in ('Agents', None):
             continue
-        weapon(sk, 6 if sk['name'].startswith('★ ') else t)
+        add_phase(sk, weapon(sk, 6 if sk['name'].startswith('★ ') else t))
         # Сувенир — только если он реально продавался в Steam (наборы выше добавлены отдельно).
         # Прайс-листы площадок содержат несуществующие предметы (Souvenir Howl, Souvenir AK-47 | Vulcan).
         if sk.get('souvenir') and t != 6 and any(steam_sold(f"Souvenir {sk['name']} ({w})") for w in WEARS):
             weapon(sk, t, souvenir=True)
 
+    finish_phases()
     order = {'case': 0, 'terminal': 1, 'collection': 2, 'souvenir': 3, 'sticker': 4, 'autograph': 5, 'patch': 6, 'pin': 7}
     for b in boxes:  # у сувениров мейджоров нет даты — берём год из названия
         if not b['date']:
