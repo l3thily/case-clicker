@@ -23,7 +23,7 @@
   function itemEV(it, b, i, stBase = 0.1) {
     if (b.variants) return price(it, b.variants[i], false);
     if (it.v) return price(it, 0, false);
-    const [a, c] = it.f, span = Math.max(c - a, 1e-6), stp = it.st && b.k !== 'souvenir' ? stBase : 0;
+    const [a, c] = it.f, span = Math.max(c - a, 1e-6), stp = it.st && b.k !== 'souvenir' && b.k !== 'collection' ? stBase : 0; // из коллекций StatTrak™ не падает
     let ev = 0;
     WEAR.forEach(([lo, hi], k) => {
       const ov = Math.max(0, Math.min(c, hi) - Math.max(a, lo));
@@ -33,7 +33,7 @@
   }
   function itemMax(it, b, i) {
     if (b.variants) return price(it, b.variants[i], false);
-    return Math.max(...it.p.filter(v => v != null), ...(b.k !== 'souvenir' && it.st ? it.st.filter(v => v != null) : []), 0.03);
+    return Math.max(...it.p.filter(v => v != null), ...(b.k !== 'souvenir' && b.k !== 'collection' && it.st ? it.st.filter(v => v != null) : []), 0.03);
   }
   function odds(b, luck = 0) {
     if (b.weights) { const t = Object.values(b.weights).reduce((s, v) => s + v, 0); return Object.entries(b.weights).map(([k, w]) => [+k, w / t]); }

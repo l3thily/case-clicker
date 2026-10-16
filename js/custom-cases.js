@@ -111,6 +111,6 @@ window.buildCustomCases = function (data) {
     const odds=Object.fromEntries(Object.keys(g).map(t=>[t,weights[t]]));
     const total=Object.values(odds).reduce((a,b)=>a+b,0);
     const ev=Object.entries(g).reduce((sum,[t,ids])=>sum+odds[t]/total*ids.reduce((s,i)=>s+data.items[i].p[variants[i]],0)/ids.length,0);
-    return {n,k:'custom',id,desc,color,series,level,opens,rtp,variants,weights:odds,g,p:Math.max(.1,Math.ceil(ev/rtp*100)/100),date:'2026-10-15',img:'./assets/custom/'+id+'.svg'};
+    return {n,k:'custom',id,desc,color,series,level,opens,rtp,variants,weights:odds,g,p:Math.max(.1,Math.ceil(ev/rtp*100-1e-8)/100),date:'2026-10-15',img:'./assets/custom/'+id+'.svg'};
   }).filter(Boolean);
 };

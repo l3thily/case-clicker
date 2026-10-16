@@ -24,6 +24,7 @@ const KINDS = {
   custom: { n: 'Авторские', ic: '✦' },
   case: { n: 'Кейсы', ic: '📦', key: true },
   terminal: { n: 'Терминалы', ic: '🖥️' },
+  collection: { n: 'Коллекции', ic: '🗂️', unl: 'collection' },
   souvenir: { n: 'Сувенирные наборы', ic: '🏆', unl: 'souvenir' },
   sticker: { n: 'Наклейки', ic: '🏷️', unl: 'sticker' },
   autograph: { n: 'Автографы', ic: '✍️', unl: 'autograph' },
@@ -59,6 +60,7 @@ const comboMax = l => 1.5 + 0.25 * l;
 const UNLOCKS = [
   ['tradeup', '📝', 'Контракты обмена', '10 скинов → 1 качеством выше', 20],
   ['market', '🛒', 'Маркет', 'Покупайте любые скины по цене Steam', 30],
+  ['collection', '🗂️', 'Коллекции', 'Коллекции карт и операций: скины, которых нет в кейсах', 30],
   ['equip', '🎒', 'Экипировка', 'Наденьте скин: бонус к доходу от его цены', 15],
   ['sticker', '🏷️', 'Капсулы с наклейками', 'Капсулы с 2014 по 2026 год', 25],
   ['souvenir', '🏆', 'Сувенирные наборы', 'Коллекции карт с мейджоров', 50],
@@ -84,7 +86,8 @@ const BOXMAP = new Map(BOXES.map((b, i) => [b.n, i]));
 const origin = new Map(); // предмет → контейнер (оружейные кейсы в приоритете — для контрактов)
 BOXES.forEach((b, bi) => Object.values(b.g).forEach(l => l.forEach(i => {
   const cur = origin.get(i);
-  if (cur == null || (BOXES[cur].k !== 'case' && b.k === 'case')) origin.set(i, bi);
+  const rank = k => (k === 'case' ? 0 : k === 'collection' ? 1 : 2); // для контрактов: кейс, затем коллекция
+  if (cur == null || rank(b.k) < rank(BOXES[cur].k)) origin.set(i, bi);
 })));
 const inBoxes = new Map(); // предмет → все контейнеры, где он есть (для альбома)
 BOXES.forEach((b, bi) => Object.values(b.g).flat().forEach(i => { if (!inBoxes.has(i)) inBoxes.set(i, []); const l = inBoxes.get(i); if (l[l.length - 1] !== bi) l.push(bi); }));
@@ -180,7 +183,7 @@ CATALOG.forEach((v, k) => { v.id = k; });
 
 // ---------- состояние ----------
 const SAVE_KEY = 'caseclicker.v2';
-const VERSION = '2026.10.16b';
+const VERSION = '2026.10.16c';
 const fresh = () => ({
   v: 2, money: 0.5, xp: 0, lvl: 1, medals: 0, rp: 0, uid: 1, inv: [], eq: null,
   up: Object.fromEntries(Object.keys(UPG).map(k => [k, 0])), unl: {},
@@ -690,7 +693,7 @@ function itemEV(i, b) {
   if (b.variants) return variantPrice(i, b.variants[i], false);
   const it = ITEMS[i];
   if (it.v) return variantPrice(i, 0, false);
-  const [a, c] = it.f, span = Math.max(c - a, 1e-6), stp = it.st && b.k !== 'souvenir' ? 0.1 + 0.01 * S.up.stattrak : 0;
+  const [a, c] = it.f, span = Math.max(c - a, 1e-6), stp = it.st && b.k !== 'souvenir' && b.k !== 'collection' ? 0.1 + 0.01 * S.up.stattrak : 0;
   let ev = 0;
   WEAR.forEach((w, k) => {
     const ov = Math.max(0, Math.min(c, w.b) - Math.max(a, w.a));
@@ -704,11 +707,11 @@ function openBoxPage(bi) {
   curBox = bi; const b = BOXES[bi];
   $('#openTitle').textContent = b.n;
   const ev = boxEV(b), cost = boxCost(b);
-  $('#openSub').innerHTML = `${KINDS[b.k].n}${b.k === 'custom' ? ' · ' + esc(b.desc) + ' · без StatTrak, износ указан на карточке' : ' · ' + b.date.slice(0, 4)} · средний дроп ${fmt(ev)} (окупаемость ${Math.round(ev / cost * 100)}%) · лучший дроп до ${fmt(window.ECONOMY.boxMax(D, b))}${b.mp != null && Math.abs(b.mp - b.p) > 0.05 ? ` · на Steam ${fmt(b.mp)}` : ''}`;
+  $('#openSub').innerHTML = `${KINDS[b.k].n}${b.k === 'custom' ? ' · ' + esc(b.desc) + ' · без StatTrak, износ указан на карточке' : ' · ' + b.date.slice(0, 4)} · средний дроп ${fmt(ev)} (окупаемость ${Math.round(ev / cost * 100)}%) · лучший дроп до ${fmt(window.ECONOMY.boxMax(D, b))}${b.mp > 0 && Math.abs(b.mp - b.p) > 0.05 ? ` · на Steam ${fmt(b.mp)}` : ''}`;
   $('#rollArea').innerHTML = heroHTML(b);
   $('#fastOpen').checked = S.set.fast;
   renderQty();
-  const odds = boxOdds(b), flat = b.k === 'custom' ? isFlat(ITEMS[Object.values(b.g)[0][0]]) : !['case', 'terminal', 'souvenir'].includes(b.k);
+  const odds = boxOdds(b), flat = b.k === 'custom' ? isFlat(ITEMS[Object.values(b.g)[0][0]]) : !['case', 'terminal', 'souvenir', 'collection'].includes(b.k);
   $('#odds').innerHTML = odds.map(([t, p]) => `<span style="--c:${tcol(t)}"><i></i>${t === 6 ? '★ Нож/перчатки' : (flat ? FLAT_T[t] : null) || TIERS[t].n} ${pct(p * 100)}</span>`).join('');
   const rows = [];
   odds.slice().reverse().forEach(([t, p]) => {
@@ -753,7 +756,7 @@ function newItem(i, c, o = {}) {
   if (o.w != null && !it.v) { a = Math.max(a, WEAR[o.w].a); b = Math.min(b, WEAR[o.w].b); }
   const fl = isFlat(it) ? 0 : (o.fl ?? (a + rnd() * (b - a)));
   const box = BOXES[c];
-  const st = o.st ?? (!!it.st && !!box && box.k !== 'souvenir' && rnd() < 0.1 + 0.01 * S.up.stattrak);
+  const st = o.st ?? (!!it.st && !!box && box.k !== 'souvenir' && box.k !== 'collection' && rnd() < 0.1 + 0.01 * S.up.stattrak);
   return { u: S.uid++, i, c, fl: Math.min(0.999999, +fl.toFixed(6)), st: !!st, s: Math.floor(rnd() * 1000), t: Date.now() };
 }
 function rollDrop(bi) {
@@ -1000,7 +1003,7 @@ const tuItems = () => tuSel.map(u => S.inv.find(x => x.u === u)).filter(Boolean)
 const tuCap = () => { const l = tuItems(); return l.length && ITEMS[l[0].i].r === 5 ? 5 : 10; };
 function tuOk(x) {
   const it = ITEMS[x.i], b = BOXES[x.c];
-  return !(x.stickers || []).length && it.t === 'w' && !!b && (b.k === 'case' || b.k === 'terminal') && !!b.g[it.r + 1];
+  return !(x.stickers || []).length && it.t === 'w' && !!b && ['case', 'terminal', 'collection'].includes(b.k) && !!b.g[it.r + 1];
 }
 function tuEligible(x) {
   if (!tuOk(x) || x.u === S.eq) return false;
@@ -1037,7 +1040,7 @@ function renderTU() {
   $('#tuGo').disabled = l.length !== cap;
   $('#tuOutcomes').innerHTML = outs.length ? outs.map(o => itemCard({ i: o.i, fl: o.fl, st: o.st }, { price: o.price, extra: `<div class="chance">${(o.p * 100).toFixed(1)}% · ${o.fl.toFixed(3)}</div>` })).join('') : '<div class="empty">—</div>';
   const inv = sortedInv('cheap', '').filter(x => tuOk(x) && !tuSel.includes(x.u));
-  $('#tuInv').innerHTML = inv.length ? inv.slice(0, 300).map(x => itemCard(x, { cls: tuEligible(x) && l.length < cap ? '' : 'dim', attr: `data-add="${x.u}"` })).join('') : '<div class="empty">Нет подходящих предметов. Нужны скины из оружейных кейсов.</div>';
+  $('#tuInv').innerHTML = inv.length ? inv.slice(0, 300).map(x => itemCard(x, { cls: tuEligible(x) && l.length < cap ? '' : 'dim', attr: `data-add="${x.u}"` })).join('') : '<div class="empty">Нет подходящих предметов. Нужны скины из оружейных кейсов или коллекций.</div>';
 }
 RENDER.tradeup = renderTU;
 $('#tuInv').addEventListener('click', e => {
@@ -1689,13 +1692,11 @@ renderNav(); renderTop(); renderClicker(); checkAch();
 if (S.set.seen !== VERSION) {
   if (S.st.opened || S.st.clicks) setTimeout(() => modal(`<h2>Обновление<button class="btn ghost" data-close>✕</button></h2>
     <ul class="news">
-      <li><b>💲 Честные цены.</b> Цена каждого контейнера теперь считается от содержимого: средний возврат ~80%, и в любом кейсе есть предметы дороже открытия. Коллекционные сувениры за $10 000 больше не стоят как один скин.</li>
-      <li><b>🐉 Полные составы.</b> Вернулись предметы без продаж в Steam: AWP | Dragon Lore в коблстоунах, iBUYPOWER Holo и Titan Holo в Katowice 2014 и ещё ~260 предметов.</li>
-      <li><b>💎 Паттерны.</b> Ruby, Sapphire, Black Pearl, Emerald, фазы Doppler, Fire &amp; Ice, Fade %, Blue Gem и другие — редкий паттерн дороже обычного.</li>
-      <li><b>🎯 Лента при ×5 и ×10</b> теперь останавливается точно на выпавшем предмете.</li>
-      <li><b>✦ Авторские кейсы:</b> в каждой редкости 3 «козыря» дороже открытия.</li>
-      <li><b>Баланс:</b> «Удача» +2% за уровень, «Скидка на ключи» −2% — чтобы кейсы не печатали деньги на максимуме.</li>
-      <li><b>Апгрейдер:</b> цели сортируются по цене, кнопки ×N показывают подходящий диапазон.</li>
+      <li><b>🗂️ Все скины CS2.</b> Добавлены 50 коллекций карт и операций (Dust 2, Anubis, Boreal, Radiant, Ascent и др.): +765 скинов, которых не было ни в одном кейсе. Открываются в магазине, годятся для контрактов. Все скины есть на маркете и в апгрейдере.</li>
+      <li><b>💲 Правильные цены.</b> Цена Steam сверяется с CSFloat, Skinport и Buff: если редкие сделки в Steam накручены или случайно дешёвые, берётся рыночная цена.</li>
+      <li><b>Честные кейсы:</b> цена каждого контейнера считается от содержимого, ~80% возврата, всегда есть предметы дороже открытия. Dragon Lore в коблстоунах и холо Katowice 2014 на месте.</li>
+      <li><b>💎 Паттерны:</b> Ruby, Sapphire, Black Pearl, Emerald, Fire &amp; Ice, Fade %, Blue Gem и другие.</li>
+      <li><b>🎯 Лента ×5 / ×10</b> останавливается точно на выпавшем предмете.</li>
     </ul><div class="modal-actions"><button class="btn primary" data-close>Играть</button></div>`), 900);
   S.set.seen = VERSION; save();
 }
