@@ -48,6 +48,10 @@ def main():
     fallback_used, corrected = [], []
     collections = load('collections', folder)
 
+    def steam_sold(name):
+        p = steam.get(name) or {}
+        return any(p.get(k) for k in ('last_24h', 'last_7d', 'last_30d', 'last_90d'))
+
     def market_refs(name):
         # цены площадок, приведённые к уровню Steam
         out = []
@@ -127,6 +131,8 @@ def main():
                     arr[k] = None
         if not any(prices):
             return None
+        if sk and sk.get('stattrak') is False:
+            st = [None] * 5  # StatTrak™ у этого скина не бывает — цена с площадки была бы чужой
         glove = 'Gloves' in (sk.get('category') or {}).get('name', '') or 'Wraps' in name
         rec = {'n': name, 'img': short(it['image']), 'r': tier, 't': 'k' if tier == 6 else ('sv' if souvenir else 'w'),
                'f': [0, 1] if vanilla else [sk.get('min_float', 0.0), sk.get('max_float', 1.0)],
@@ -225,7 +231,9 @@ def main():
         if t is None or not sk.get('image') or cat in ('Agents', None):
             continue
         weapon(sk, 6 if sk['name'].startswith('★ ') else t)
-        if sk.get('souvenir') and not sk['name'].startswith('★ ') and t != 6:
+        # Сувенир — только если он реально продавался в Steam (наборы выше добавлены отдельно).
+        # Прайс-листы площадок содержат несуществующие предметы (Souvenir Howl, Souvenir AK-47 | Vulcan).
+        if sk.get('souvenir') and t != 6 and any(steam_sold(f"Souvenir {sk['name']} ({w})") for w in WEARS):
             weapon(sk, t, souvenir=True)
 
     order = {'case': 0, 'terminal': 1, 'collection': 2, 'souvenir': 3, 'sticker': 4, 'autograph': 5, 'patch': 6, 'pin': 7}
