@@ -478,3 +478,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--acc)}
 @keyframes battleCharge{0%,100%{filter:brightness(1) drop-shadow(0 0 4px rgba(255,193,94,.15));opacity:.65}50%{filter:brightness(1.2) drop-shadow(0 0 18px rgba(255,193,94,.65));opacity:1}}
 @keyframes mineGlow{from{box-shadow:0 0 26px rgba(255,90,95,.7)}to{box-shadow:none}}
 @media(prefers-reduced-motion:reduce){.case-hero.charging img,.case-hero.charging:after,.modal-box.reward-reveal,.modal-box.reward-reveal:before,.reward-reveal .drop:after,.bt-slot.spin>img,.cell.boom{animation:none}.drop img,.drop .rays{animation:none}}
+/* заказы коллекционеров и бесплатные кейсы */
+.badge.ok{background:var(--good);color:#06120b;font-weight:700}
+.case-card .free-badge{position:absolute;top:30px;right:10px;font-size:11px;padding:2px 7px;border-radius:6px;background:rgba(62,224,143,.18);color:var(--good);font-weight:700;z-index:1}
+.orders{display:flex;flex-direction:column;gap:12px}
+.order{display:grid;grid-template-columns:170px 1fr;gap:16px;align-items:center;padding:14px;border-radius:14px;background:rgba(8,11,17,.5);border:1px solid var(--line)}
+.order.ready{border-color:rgba(62,224,143,.55);box-shadow:0 0 24px rgba(62,224,143,.12)}
+.order.wait{grid-template-columns:auto 1fr;opacity:.75}
+.od-wait{font-size:28px;width:48px;text-align:center}
+.od-body{display:flex;flex-direction:column;gap:6px;min-width:0}
+.od-rw b{color:var(--good);font:700 18px var(--hf)}
+.od-act{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+@media (max-width:640px){.order{grid-template-columns:1fr}.order .item{max-width:220px}}

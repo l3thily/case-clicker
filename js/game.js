@@ -43,10 +43,11 @@ const LVL_MAX = 40;
 const lvlNeed = l => 100 + 25 * l;
 const MEDAL_COL = ['#9aa4b1', '#3ee08f', '#4b9bff', '#a368ff', '#e04bd8', '#ff5a5f', '#ffd45c'];
 
-const AUTO_GROWTH = 1.18;
+// цена автокликера растёт быстрее дохода: каждый следующий уровень окупается дольше
+const AUTO_GROWTH = 1.2, AUTO_GAIN = 1.12;
 const UPG = {
   click: { n: 'Сила клика', ic: '👆', d: l => `+${fmt(clickBase(l + 1) - clickBase(l))} за клик`, cost: l => 1 * 1.16 ** l, max: 250, quick: 1 },
-  auto: { n: 'Автокликер', ic: '🤖', d: l => `+${fmt(autoGain(l) * incomeMult())}/сек · прирост +18%/ур.`, cost: l => 4 * AUTO_GROWTH ** l, max: 250, quick: 1 },
+  auto: { n: 'Автокликер', ic: '🤖', d: l => `+${fmt(autoGain(l) * incomeMult())}/сек · окупится за ${fmtDur(UPG.auto.cost(l) / Math.max(1e-9, autoGain(l) * incomeMult()))}`, cost: l => 4 * AUTO_GROWTH ** l, max: 250, quick: 1 },
   crit: { n: 'Хедшот', ic: '🎯', d: l => `Шанс клика ×10: ${l * 2}% → ${(l + 1) * 2}%`, cost: l => 15 * 1.55 ** l, max: 25, quick: 1 },
   combo: { n: 'Комбо', ic: '🔥', d: l => `Макс. комбо ×${comboMax(l).toFixed(2)} → ×${comboMax(l + 1).toFixed(2)}`, cost: l => 10 * 1.7 ** l, max: 14 },
   offline: { n: 'Оффлайн-доход', ic: '🌙', d: l => `Копится до ${l + 1} → ${l + 2} ч, пока вас нет`, cost: l => 25 * 2.1 ** l, max: 11 },
@@ -55,14 +56,14 @@ const UPG = {
   keydisc: { n: 'Скидка на ключи', ic: '🔑', d: l => `Ключ −${l * 2}% → −${(l + 1) * 2}%`, cost: l => 30 * 1.8 ** l, max: 10 },
 };
 const clickBase = l => 0.05 + l * 0.05 * (1 + l / 50);
-// Each purchase adds 18% more income, matching the growth of its price.
-const autoGain = l => 0.03 * AUTO_GROWTH ** l;
-const autoBase = l => 0.03 * Math.expm1(l * Math.log(AUTO_GROWTH)) / (AUTO_GROWTH - 1);
+const autoGain = l => 0.03 * AUTO_GAIN ** l;
+const autoBase = l => 0.03 * Math.expm1(l * Math.log(AUTO_GAIN)) / (AUTO_GAIN - 1);
+// комиссия площадки при продаже, как в Steam; контракты, апгрейд и джекпот считают полную цену
+const SELL_FEE = 0.1;
 const comboMax = l => 1.5 + 0.25 * l;
 
 const UNLOCKS = [
   ['tradeup', '📝', 'Контракты обмена', '10 скинов → 1 качеством выше', 20],
-  ['market', '🛒', 'Маркет', 'Покупайте любые скины по цене Steam', 30],
   ['collection', '🗂️', 'Коллекции', 'Коллекции карт и операций: скины, которых нет в кейсах', 30],
   ['equip', '🎒', 'Экипировка', 'Наденьте скин: бонус к доходу от его цены', 15],
   ['sticker', '🏷️', 'Капсулы с наклейками', 'Капсулы с 2014 по 2026 год', 25],
@@ -140,8 +141,7 @@ function nameParts(i, st) {
 }
 // ---------- паттерны, float, наклейки ----------
 // Рыночная цена = обычный экземпляр. Редкий паттерн, низкий/максимальный float и наклейки дают премию сверху.
-// Покупка на маркете всегда даёт обычный экземпляр (как самый дешёвый лот), поэтому заработать
-// на перепродаже нельзя; премии случаются только в дропе.
+// Цель апгрейда и ставки ботов — обычный экземпляр (как самый дешёвый лот); премии случаются только в дропе.
 const chBlue = window.VALUATION.chBlue;
 const patternOf = x => window.VALUATION.pattern(ITEMS[x.i], x.s);
 const floatOf = x => window.VALUATION.float(ITEMS[x.i], x.fl);
@@ -183,7 +183,7 @@ function fullName(i, st) {
   return (it.t === 'sv' ? 'Souvenir ' : '') + n;
 }
 
-// каталог вариантов (маркет, апгрейд, боты джекпота)
+// каталог вариантов (апгрейд, боты джекпота)
 const CATALOG = [];
 ITEMS.forEach((it, i) => {
   if (it.phw || it.hide) return; // базовый Doppler не продаётся — продаются конкретные фазы
@@ -199,13 +199,13 @@ CATALOG.forEach((v, k) => { v.id = k; });
 
 // ---------- состояние ----------
 const SAVE_KEY = 'caseclicker.v2';
-const VERSION = '2026.10.16d';
+const VERSION = '2026.10.17';
 const fresh = () => ({
   v: 2, money: 0.5, xp: 0, lvl: 1, medals: 0, rp: 0, uid: 1, inv: [], eq: null,
   up: Object.fromEntries(Object.keys(UPG).map(k => [k, 0])), unl: {},
-  st: { clicks: 0, crits: 0, clickEarn: 0, opened: 0, spent: 0, dropValue: 0, sold: 0, knives: 0, stDrops: 0, tradeups: 0, upWins: 0, upLoss: 0, crashBest: 0, gambleNet: 0, gameWins: 0, bought: 0, best: null, lowFloat: 1, missions: 0, stickers: 0, souvenirs: 0, maxCombo: 1, jackpots: 0, battles: 0, battleWins: 0, bonuses: 0 },
-  missions: [], ach: {}, daily: { last: '', streak: 0 }, last: Date.now(), found: {}, album: {},
-  set: { fast: false, sound: true, fx: true, kind: 'custom', invKind: 'all', mkKind: 'w', game: 'crash', autoSell: 0, btBox: '', seen: '' },
+  st: { clicks: 0, crits: 0, clickEarn: 0, opened: 0, spent: 0, dropValue: 0, sold: 0, knives: 0, stDrops: 0, tradeups: 0, upWins: 0, upLoss: 0, crashBest: 0, gambleNet: 0, gameWins: 0, bought: 0, best: null, lowFloat: 1, missions: 0, stickers: 0, souvenirs: 0, maxCombo: 1, jackpots: 0, battles: 0, battleWins: 0, bonuses: 0, orders: 0, freeOpened: 0 },
+  missions: [], ach: {}, daily: { last: '', streak: 0 }, last: Date.now(), found: {}, album: {}, orders: [], free: {},
+  set: { fast: false, sound: true, fx: true, kind: 'custom', invKind: 'all', game: 'crash', autoSell: 0, btBox: '', seen: '' },
 });
 // в сохранении предметы хранятся по названию, а не индексу — данные пересобираются каждую неделю
 function packItem(x) { return { u: x.u, k: keyOf(ITEMS[x.i]), b: BOXES[x.c]?.n, fl: x.fl, st: x.st ? 1 : 0, s: x.s, t: x.t, stickers: x.stickers || [], f: x.fav ? 1 : 0 }; }
@@ -225,6 +225,8 @@ try {
     S.inv = migrated ? [] : (o.inv || []).map(unpackItem).filter(Boolean);
     if (migrated) { S.v = 2; S.st.best = null; setTimeout(() => toast('Большое обновление!', 'Деньги и улучшения перенесены, инвентарь обнулён.'), 800); }
     if (S.eq != null && !S.inv.some(x => x.u === S.eq)) S.eq = null;
+    // маркет убран: стоимость разблокировки возвращается
+    if (S.unl.market) { delete S.unl.market; S.money += 30; }
   }
 } catch { S = fresh(); }
 S.inv.forEach(x => { S.found[keyOf(ITEMS[PHASE_BASE.get(x.i) ?? x.i])] = 1; });
@@ -269,6 +271,12 @@ function fmt(n) {
   const a = Math.abs(n);
   const v = a >= 1e6 ? a.toLocaleString('en-US', { maximumFractionDigits: 0 }) : a >= 100 ? a.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 }) : a.toFixed(2);
   return (n < 0 ? '-$' : '$') + v;
+}
+function fmtDur(sec) {
+  if (sec < 90) return Math.ceil(sec) + ' с';
+  if (sec < 5400) return Math.round(sec / 60) + ' мин';
+  if (sec < 172800) return (sec / 3600).toFixed(1).replace('.0', '') + ' ч';
+  return Math.round(sec / 86400) + ' дн';
 }
 const pct = p => (p >= 0.1 ? p.toFixed(2) : p >= 0.001 ? p.toFixed(3) : p.toFixed(4)) + '%';
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -393,14 +401,14 @@ const ICONS = {
   shop: '<path d="M4 10h16l-1-5H5zM5 10v9h14v-9M10 19v-5h4v5"/>',
   tradeup: '<path d="M7 3h7l4 4v14H7zM14 3v4h4M10 12h5M10 16h5"/>',
   upgrade: '<circle cx="12" cy="12" r="9"/><path d="M12 16V8M8.5 11.5 12 8l3.5 3.5"/>',
-  market: '<path d="M3 4h2l2.5 11h10L20 7H6.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>',
+  orders: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M8.5 12l2.5 2.5 4.5-5M9 18h6"/>',
   games: '<rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.3"/><circle cx="15.5" cy="15.5" r="1.3"/><circle cx="15.5" cy="8.5" r="1.3"/><circle cx="8.5" cy="15.5" r="1.3"/>',
   profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.5 4.5-6 8-6s7 1.5 8 6"/>',
 };
-const TABS = [['clicker', 'Кликер'], ['cases', 'Кейсы'], ['inventory', 'Инвентарь'], ['shop', 'Магазин'], ['tradeup', 'Контракты', 'tradeup'], ['upgrade', 'Апгрейд', 'upgrade'], ['market', 'Маркет', 'market'], ['games', 'Казино'], ['profile', 'Профиль']];
+const TABS = [['clicker', 'Кликер'], ['cases', 'Кейсы'], ['inventory', 'Инвентарь'], ['shop', 'Магазин'], ['tradeup', 'Контракты', 'tradeup'], ['upgrade', 'Апгрейд', 'upgrade'], ['orders', 'Заказы'], ['games', 'Казино'], ['profile', 'Профиль']];
 let curTab = 'clicker';
 function renderNav() {
-  $('#tabs').innerHTML = TABS.map(([id, n, u]) => `<button data-tab="${id}" class="${curTab === id || (curTab === 'open' && id === 'cases') ? 'on' : ''}"><svg viewBox="0 0 24 24">${ICONS[id]}</svg><span>${n}</span>${u && !unlocked(u) ? '<span class="lock">🔒</span>' : id === 'inventory' ? `<span class="badge">${S.inv.length}</span>` : ''}</button>`).join('');
+  $('#tabs').innerHTML = TABS.map(([id, n, u]) => `<button data-tab="${id}" class="${curTab === id || (curTab === 'open' && id === 'cases') ? 'on' : ''}"><svg viewBox="0 0 24 24">${ICONS[id]}</svg><span>${n}</span>${u && !unlocked(u) ? '<span class="lock">🔒</span>' : id === 'inventory' ? `<span class="badge">${S.inv.length}</span>` : id === 'orders' && !rolling && ordersReady() ? `<span class="badge ok">${ordersReady()}</span>` : ''}</button>`).join('');
 }
 const RENDER = {};
 function showTab(t) {
@@ -460,7 +468,9 @@ function addXP(x) {
   while (S.lvl < LVL_MAX && S.xp >= lvlNeed(S.lvl)) {
     S.xp -= lvlNeed(S.lvl); S.lvl++;
     const bonus = Math.round((S.lvl * 0.6 * incomeMult() + baseSec() * 30) * 100) / 100;
-    addMoney(bonus); toast(`Уровень ${S.lvl}!`, `Награда ${fmt(bonus)}`, 'good');
+    addMoney(bonus);
+    const gift = giftCase();
+    toast(`Уровень ${S.lvl}!`, `Награда ${fmt(bonus)}${gift ? ' и кейс «' + gift.n + '»' : ''}`, 'good');
     if (S.lvl >= LVL_MAX) toast('Максимальный уровень', 'Получите медаль за службу в профиле', 'gold');
   }
 }
@@ -503,10 +513,22 @@ document.addEventListener('keydown', e => {
 // бонус-дроп: золотой кейс появляется в кликере раз в 1.5–4 минуты на 12 секунд
 let bonusAt = performance.now() + 60e3 + rnd() * 60e3, bonusHide = 0;
 const BONUS = [
-  [45, () => { const v = Math.max(0.25, baseSec() * 120 + clickBase(S.up.click) * incomeMult() * 80); addMoney(v); return ['Тайник', '+' + fmt(v)]; }],
-  [30, () => { boost.click = 5; boost.clickUntil = Date.now() + 15e3; return ['Раш!', 'Клик ×5 на 15 секунд']; }],
-  [25, () => { boost.auto = 4; boost.autoUntil = Date.now() + 30e3; return ['Овертайм', 'Автокликер ×4 на 30 секунд']; }],
+  [40, () => { const v = Math.max(0.25, baseSec() * 120 + clickBase(S.up.click) * incomeMult() * 80); addMoney(v); return ['Тайник', '+' + fmt(v)]; }],
+  [27, () => { boost.click = 5; boost.clickUntil = Date.now() + 15e3; return ['Раш!', 'Клик ×5 на 15 секунд']; }],
+  [20, () => { boost.auto = 4; boost.autoUntil = Date.now() + 30e3; return ['Овертайм', 'Автокликер ×4 на 30 секунд']; }],
+  [13, () => { const b = giftCase(); return b ? ['Кейс в подарок', b.n + ' · откройте во вкладке «Кейсы»'] : BONUS[0][1](); }],
 ];
+// бесплатный авторский кейс по силам игрока: из доступных, не дороже его текущего заработка
+function giftCase() {
+  const ready = BOXES.filter(b => b.k === 'custom' && customReady(b)).sort((a, b) => boxCost(a) - boxCost(b));
+  if (!ready.length) return null;
+  const cap = Math.max(0.5, S.money * 0.1, baseSec() * 300);
+  const fit = ready.filter(b => boxCost(b) <= cap);
+  const b = fit.length ? pick(fit.slice(-4)) : ready[0];
+  S.free[b.n] = (S.free[b.n] || 0) + 1;
+  return b;
+}
+const freeTotal = () => Object.values(S.free).reduce((s, n) => s + n, 0);
 function tickBonus(now) {
   const el = $('#bonusDrop');
   if (!el.hidden && now > bonusHide) { el.hidden = true; bonusAt = now + 90e3 + rnd() * 150e3; }
@@ -676,7 +698,7 @@ function renderCases() {
     return `<div style="--case-accent:${b.color || 'var(--acc)'}" class="case-card ${canPay(cost) && customReady(b) ? '' : 'locked'}" data-box="${i}">
       <span class="yr">${b.k === 'custom' ? (customReady(b) ? CUSTOM_SERIES[b.series] || '✦ АВТОРСКИЙ' : '🔒 ЗАКРЫТ') : b.date.slice(0, 4)}</span>${b.g[6] ? '<span class="tag">★</span>' : ''}
       <img loading="lazy" src="${img(b.img)}" alt="">
-      <div class="nm">${esc(b.n)}</div><div class="pr">${fmt(cost)}</div>${albumBar(b)}${b.k === 'custom' ? `<small class="custom-desc">${esc(b.desc)}</small><small class="custom-req">${customReady(b) ? 'Без ключа · возврат ~' + Math.round(boxEV(b)/cost*100) + '%' : customRequirement(b)}</small>` : ''}</div>`;
+      ${S.free[b.n] ? `<span class="free-badge" title="Бесплатные открытия">🎁 ${S.free[b.n]}</span>` : ''}<div class="nm">${esc(b.n)}</div><div class="pr">${fmt(cost)}</div>${albumBar(b)}${b.k === 'custom' ? `<small class="custom-desc">${esc(b.desc)}</small><small class="custom-req">${customReady(b) ? 'Без ключа · возврат ~' + Math.round(boxEV(b)/cost*100) + '%' : customRequirement(b)}</small>` : ''}</div>`;
   }).join('') || '<div class="empty">Ничего не найдено. Измените поиск или фильтры.</div>';
   $('#customResult').textContent = kind === 'custom' ? `Показано ${list.length} из ${BOXES.filter(b=>b.k==='custom').length} · доступно ${list.filter(x=>customReady(x.b)).length}` : '';
 }
@@ -753,8 +775,8 @@ RENDER.open = () => {};
 function renderQty() {
   const b = BOXES[curBox];
   $('#qty').innerHTML = [1, 2, 3, 5, 10].map(n => `<button class="${n === qty ? 'on' : ''}" data-q="${n}">${n}</button>`).join('');
-  const btn = $('#openBtn');
-  btn.textContent = `Открыть ${qty > 1 ? '×' + qty + ' ' : ''}· ${fmt(boxCost(b) * qty)}`;
+  const btn = $('#openBtn'), have = S.free[b.n] || 0, free = Math.min(have, qty);
+  btn.textContent = `Открыть ${qty > 1 ? '×' + qty + ' ' : ''}· ${free === qty ? '🎁 бесплатно' : fmt(boxCost(b) * (qty - free)) + (free ? ` + 🎁${free}` : '')}${have ? ` (подарков ${have})` : ''}`;
   btn.disabled = rolling || !customReady(b);
   if (!customReady(b)) btn.textContent = '🔒 ' + customRequirement(b);
   btn.title = KINDS[b.k].key ? `${fmt(b.p)} + ключ ${fmt(keyPrice(b))}` : '';
@@ -779,7 +801,7 @@ function newItem(i, c, o = {}) {
   const box = BOXES[c];
   const st = o.st ?? (!!it.st && !!box && box.k !== 'souvenir' && box.k !== 'collection' && rnd() < 0.1 + 0.01 * S.up.stattrak);
   const x = { u: S.uid++, i, c, fl: Math.min(0.999999, +fl.toFixed(6)), st: !!st, s: Math.floor(rnd() * 1000), t: Date.now() };
-  // маркет продаёт обычный экземпляр: без редкого паттерна и премиального float
+  // апгрейд и джекпот выдают обычный экземпляр: без редкого паттерна и премиального float
   for (let k = 0; o.plain && k < 60 && (patternOf(x)[1] > 1 || floatOf(x)[1] > 1); k++) { x.s = Math.floor(rnd() * 1000); x.fl = Math.min(0.999999, +(a + rnd() * (b - a)).toFixed(6)); }
   if (o.plain && patternOf(x)[1] > 1) x.s = Array.from({ length: 1000 }, (_, seed) => seed).find(seed => window.VALUATION.pattern(it, seed)[1] === 1) ?? 0;
   if (o.plain && floatOf(x)[1] > 1) {
@@ -815,8 +837,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 $('#openBtn').addEventListener('click', async () => {
   if (rolling) return;
   if (!customReady(BOXES[curBox])) { toast('Кейс пока закрыт', customRequirement(BOXES[curBox])); return; }
-  const b = BOXES[curBox], cost = boxCost(b) * qty;
+  const b = BOXES[curBox], free = Math.min(S.free[b.n] || 0, qty), cost = boxCost(b) * (qty - free);
   if (!pay(cost)) return;
+  if (free) { S.free[b.n] -= free; if (!S.free[b.n]) delete S.free[b.n]; S.st.freeOpened += free; }
   rolling = true; renderQty();
   S.st.opened += qty; S.st.spent += cost;
   const drops = [];
@@ -857,7 +880,7 @@ $('#openBtn').addEventListener('click', async () => {
     setTimeout(() => strip.children[WIN].classList.add('win'), dur + k * lag);
   });
   await wait(dur + (qty - 1) * lag + 300);
-  rolling = false; renderQty(); showDrops(drops); checkAch();
+  rolling = false; renderQty(); renderNav(); showDrops(drops); checkAch();
 });
 
 function dropDetails(x) {
@@ -889,11 +912,13 @@ function showDrops(drops) {
   const all = drops.reduce((s, x) => s + priceOf(x), 0);
   const top = Math.max(...drops.map(x => ITEMS[x.i].r));
   beep(top >= 4 ? 'rare' : 'win');
+  const wanted = drops.filter(x => S.orders.some(o => o.k && orderItem(o) === (PHASE_BASE.get(x.i) ?? x.i)));
+  if (wanted.length) toast('📋 Этот предмет ждёт коллекционер', fullName(wanted[0].i, wanted[0].st) + ' — сдайте во вкладке «Заказы»', 'gold');
   if (top === 6) toast('★ Редкий особый предмет!', fullName(drops.find(x => ITEMS[x.i].r === 6).i), 'gold');
   // автопродажа: дешёвое продаётся сразу, ножи и перчатки — никогда
   const lim = S.set.autoSell, auto = new Set(lim > 0 ? drops.filter(x => ITEMS[x.i].r < 6 && priceOf(x) < lim).map(x => x.u) : []);
   if (auto.size) sellUids([...auto]);
-  const kept = drops.filter(x => !auto.has(x.u)), total = kept.reduce((s, x) => s + priceOf(x), 0);
+  const kept = drops.filter(x => !auto.has(x.u)), total = kept.reduce((s, x) => s + sellPrice(x), 0);
   const body = drops.length === 1 ? dropDetails(drops[0]) + (auto.size ? '<p class="muted" style="text-align:center">Продано автоматически</p>' : '')
     : `<div class="item-grid small">${drops.map(x => itemCard(x, auto.has(x.u) ? { cls: 'dim', extra: '<small class="sold">продано</small>' } : {})).join('')}</div><p class="muted" style="text-align:center">Дроп: <b style="color:var(--good)">${fmt(all)}</b>${auto.size ? ` · автопродажа ${auto.size} шт.` : ''}</p>`;
   modal(`<h2>${drops.length === 1 ? 'Вам выпало' : 'Ваш дроп'}<button class="btn ghost" data-close>✕</button></h2>${body}
@@ -913,7 +938,7 @@ function customJourney() {
 }
 function renderProgressGuide() {
   const next = BOXES.filter(b => b.k === 'custom').sort((a,b)=>a.opens-b.opens).find(b => !customReady(b));
-  $('#progressGuide').innerHTML = `<b>Следующая цель</b><span>${S.up.click < 3 ? 'Сила клика до ур. 3 → быстрее копить на открытия' : S.up.auto < 3 ? 'Автокликер до ур. 3 → доход между сессиями' : next ? esc(next.n) + ' · ' + customRequirement(next) : 'Соберите любимый скин с пятью наклейками'}</span><small>Чередуйте улучшения и кейсы. Миссии помогают расти; казино не требуется для прогресса.</small>`;
+  $('#progressGuide').innerHTML = `<b>Следующая цель</b><span>${freeTotal() ? `🎁 Бесплатных кейсов: ${freeTotal()} — откройте во вкладке «Кейсы»` : ordersReady() ? `📋 Можно сдать заказов: ${ordersReady()} — вкладка «Заказы»` : S.up.click < 3 ? 'Сила клика до ур. 3 → быстрее копить на открытия' : S.up.auto < 3 ? 'Автокликер до ур. 3 → доход между сессиями' : next ? esc(next.n) + ' · ' + customRequirement(next) : 'Соберите любимый скин с пятью наклейками'}</span><small>Чередуйте улучшения и кейсы. Миссии и заказы коллекционеров помогают расти; казино не требуется для прогресса.</small>`;
 }
 function stickerImages(x) {
   return (x.stickers || []).map(k => KEYMAP.get(k)).filter(i => i != null).map(i => `<img src="${img(ITEMS[i].img, '128fx96f')}" title="${esc(ITEMS[i].n)}" alt="${esc(ITEMS[i].n)}">`).join('');
@@ -1021,7 +1046,7 @@ function renderInv() {
   const list = sortedInv($('#invSort').value, $('#invSearch').value.trim().toLowerCase(), INV_KINDS[ik][1]);
   for (const u of [...invSel]) if (!S.inv.some(x => x.u === u)) invSel.delete(u);
   $('#invValue').textContent = fmt(S.inv.reduce((s, x) => s + priceOf(x), 0));
-  const selVal = S.inv.filter(x => invSel.has(x.u)).reduce((s, x) => s + priceOf(x), 0);
+  const selVal = S.inv.filter(x => invSel.has(x.u)).reduce((s, x) => s + sellPrice(x), 0);
   $('#sellSel').disabled = !invSel.size;
   $('#sellSel').textContent = invSel.size ? `Продать ${invSel.size} · ${fmt(selVal)}` : 'Продать выбранные';
   $('#selAll').textContent = invSel.size ? 'Снять выбор' : 'Выбрать все';
@@ -1056,7 +1081,7 @@ $('#sellCheap').addEventListener('click', () => {
     const upd = () => {
       const lim = +$('#cheapLim', box).value || 0;
       const l = S.inv.filter(x => ITEMS[x.i].r < 6 && x.u !== S.eq && !x.fav && !stickerKeys(x).length && priceOf(x) < lim);
-      $('#cheapInfo', box).textContent = `${l.length} предм. на ${fmt(l.reduce((s, x) => s + priceOf(x), 0))}`;
+      $('#cheapInfo', box).textContent = `${l.length} предм. · вы получите ${fmt(l.reduce((s, x) => s + sellPrice(x), 0))} (комиссия ${SELL_FEE * 100}%)`;
       return l;
     };
     upd(); $('#cheapLim', box).oninput = upd;
@@ -1068,19 +1093,20 @@ function removeUids(set) {
   if (set.has(S.eq)) S.eq = null;
   tuSel = tuSel.filter(u => !set.has(u)); upSel = upSel.filter(u => !set.has(u)); jpSel = jpSel.filter(u => !set.has(u));
 }
+const sellPrice = x => Math.round(priceOf(x) * (1 - SELL_FEE) * 100) / 100;
 function sellUids(uids) {
   const set = new Set(uids); let sum = 0, n = 0;
-  S.inv.forEach(x => { if (set.has(x.u)) { sum += priceOf(x); n++; } });
+  S.inv.forEach(x => { if (set.has(x.u)) { sum += sellPrice(x); n++; } });
   if (!n) return;
   removeUids(set);
   addMoney(sum); S.st.sold += sum; ev('sell', sum);
-  toast(`Продано: ${n}`, '+' + fmt(sum), 'good'); beep('coin'); save(); renderTop(); renderNav(); checkAch();
+  toast(`Продано: ${n}`, `+${fmt(sum)} · комиссия ${SELL_FEE * 100}%`, 'good'); beep('coin'); save(); renderTop(); renderNav(); checkAch();
 }
 function showItem(u) {
   const x = S.inv.find(y => y.u === u); if (!x) return;
   const canEq = unlocked('equip') && !isFlat(ITEMS[x.i]);
   modal(`<h2>Предмет<button class="btn ghost" data-close>✕</button></h2>${dropDetails(x)}
-    <div class="modal-actions"><button class="btn primary" id="iSell">Продать · ${fmt(priceOf(x))}</button>
+    <div class="modal-actions"><button class="btn primary" id="iSell" title="Цена ${fmt(priceOf(x))}, комиссия ${SELL_FEE * 100}%">Продать · ${fmt(sellPrice(x))}</button>
     ${canEq ? `<button class="btn" id="iEq">${S.eq === u ? 'Снять' : 'Экипировать (+' + Math.round(0.2 * Math.log10(1 + priceOf(x)) * 100) + '% дохода)'}</button>` : ''}
     <button class="btn" id="iFav">${x.fav ? '♡ Убрать из избранного' : '♥ В избранное'}</button>
     ${ITEMS[x.i].t === 'w' ? '<button class="btn" id="iCraft">Наклейки · ' + stickerKeys(x).length + '/5</button>' : ''}<button class="btn" data-close>Закрыть</button></div>`,
@@ -1264,48 +1290,72 @@ $('#tab-upgrade').addEventListener('click', e => {
   }
 });
 
-// ---------- маркет ----------
-const MK_KINDS = { w: ['Оружие', it => it.t === 'w'], k: ['★ Ножи и перчатки', it => it.t === 'k'], sv: ['Сувениры', it => it.t === 'sv'], s: ['Наклейки', it => it.t === 's'], p: ['Нашивки и пины', it => it.t === 'patch' || it.t === 'pin'] };
-function renderMarket() {
-  if (!gate('tab-market', 'market')) return;
-  const mk = S.set.mkKind;
-  $('#mkTabs').innerHTML = Object.entries(MK_KINDS).map(([k, [n]]) => `<button data-mk="${k}" class="${k === mk ? 'on' : ''}">${n}</button>`).join('');
-  const sel = $('#mkRarity'), cur = sel.value, flat = mk === 's' || mk === 'p';
-  const tiers = mk === 'k' ? [6] : mk === 'sv' ? [0, 1, 2, 3, 4, 5] : [2, 3, 4, 5];
-  sel.innerHTML = '<option value="">Любое качество</option>' + tiers.map(t => `<option value="${t}">${flat ? FLAT_T[t] : TIERS[t].n}</option>`).join('');
-  sel.value = tiers.includes(+cur) && cur !== '' ? cur : '';
-  const stOk = mk === 'w' || mk === 'k';
-  $('#mkST').parentElement.style.display = stOk ? '' : 'none';
-  const q = $('#mkSearch').value.trim().toLowerCase(), r = sel.value, st = $('#mkST').checked && stOk, desc = $('#mkSort').value === 'exp';
-  const f = MK_KINDS[mk][1], list = [], n = CATALOG.length;
-  for (let k = 0; k < n && list.length < 160; k++) {
-    const v = CATALOG[desc ? n - 1 - k : k], it = ITEMS[v.i];
-    if (v.st !== st || !f(it)) continue;
-    if (r !== '' && it.r !== +r) continue;
-    if (q && !fullName(v.i, v.st).toLowerCase().includes(q)) continue;
-    list.push(v);
-  }
-  $('#mkGrid').innerHTML = list.map(v => itemCard(v, { price: v.p, cls: canPay(v.p) ? '' : 'locked', attr: `data-buy="${v.id}"` })).join('') || '<div class="empty">Ничего не найдено. Измените поиск или фильтры.</div>';
+// ---------- заказы коллекционеров ----------
+// Вместо маркета: коллекционер просит конкретный предмет из доступного кейса и платит больше рынка.
+// Награда = 1.5 средней цены предмета + 20% стоимости открытий, которые в среднем нужны, чтобы его выбить.
+const ORDER_SLOTS = 3, ORDER_TTL = 3 * 3600e3, ORDER_NEXT = 5 * 60e3, ORDER_SKIP = 15 * 60e3;
+const orderItem = o => KEYMAP.get(o.k);
+function orderMatches(o) {
+  const i = orderItem(o);
+  return S.inv.filter(x => (PHASE_BASE.get(x.i) ?? x.i) === i && !x.fav && x.u !== S.eq).sort((a, b) => priceOf(a) - priceOf(b));
 }
-RENDER.market = renderMarket;
-$('#mkTabs').addEventListener('click', e => { const b = e.target.closest('[data-mk]'); if (b) { S.set.mkKind = b.dataset.mk; renderMarket(); } });
-$('#mkSearch').addEventListener('input', renderMarket);
-['#mkRarity', '#mkSort', '#mkST'].forEach(s => $(s).addEventListener('change', renderMarket));
-$('#mkGrid').addEventListener('click', e => {
-  const c = e.target.closest('[data-buy]'); if (!c) return;
-  const v = CATALOG[+c.dataset.buy], it = ITEMS[v.i], [title, sub] = nameParts(v.i, v.st);
-  modal(`<h2>Покупка<button class="btn ghost" data-close>✕</button></h2>
-    <div class="drop" style="--c:${tcol(it.r)}"><div class="rays"></div><img src="${img(it.img, '512fx384f')}" alt="">
-    <div class="nm" style="color:${tcol(it.r)}">${esc(title)}</div>
-    <div class="meta">${esc(sub)} · ${tierName(it)}${it.v || isFlat(it) ? '' : ' · ' + WEAR[v.w].n}</div><div class="pr">${fmt(v.p)}</div></div>
-    <div class="modal-actions"><button class="btn primary" id="buyGo" ${canPay(v.p) ? '' : 'disabled'}>Купить</button><button class="btn" data-close>Отмена</button></div>`, box => {
-    $('#buyGo', box).onclick = () => {
-      if (!pay(v.p)) return;
-      const x = newItem(v.i, origin.get(v.i), { w: v.w, st: v.st, plain: true });
-      S.inv.push(x); S.st.bought++; save(); renderTop(); renderNav(); closeModal(); renderMarket(); beep('coin');
-      toast('Куплено', fullName(v.i, v.st), 'good'); checkAch();
-    };
+const ordersReady = () => S.orders.filter(o => o.k && orderMatches(o).length).length;
+function genOrder() {
+  const all = BOXES.filter(b => ((b.k === 'custom' && customReady(b)) || b.k === 'case') && Object.keys(b.g).some(t => +t < 6)).sort((a, b) => boxCost(a) - boxCost(b));
+  const cap = Math.max(1, S.money * 0.3, baseSec() * 600);
+  const taken = new Set(S.orders.map(o => o.k));
+  const pool = all.filter(b => boxCost(b) <= cap);
+  const b = pool.length ? pick(pool) : all[0];
+  // не самая частая редкость; редкие выпадают реже (вес — корень из шанса)
+  let odds = boxOdds(b).filter(([t]) => t < 6);
+  if (odds.length > 1) odds = odds.slice(1);
+  let r = rnd() * odds.reduce((s, [, p]) => s + Math.sqrt(p), 0), t = odds[0][0], pt = odds[0][1];
+  for (const [tt, p] of odds) { t = tt; pt = p; if ((r -= Math.sqrt(p)) < 0) break; }
+  const list = b.g[t].filter(i => !taken.has(keyOf(ITEMS[i])));
+  const i = pick(list.length ? list : b.g[t]), p = pt / b.g[t].length;
+  const reward = Math.round((itemEV(i, b) * 1.5 + boxCost(b) * Math.min(150, 1 / p) * 0.2) * 100) / 100;
+  return { k: keyOf(ITEMS[i]), b: b.n, p, r: Math.max(0.1, reward), until: Date.now() + ORDER_TTL };
+}
+// заполняет пустые и просроченные места; true — если что-то изменилось
+function tickOrders() {
+  const now = Date.now(); let changed = false;
+  S.orders = S.orders.filter(o => o.wait || (orderItem(o) != null && BOXMAP.has(o.b)));
+  while (S.orders.length < ORDER_SLOTS) { S.orders.push({ wait: now }); }
+  S.orders.forEach((o, k) => {
+    if ((o.wait && now >= o.wait) || (o.until && now >= o.until)) { S.orders[k] = genOrder(); changed = true; }
   });
+  return changed;
+}
+function renderOrders() {
+  tickOrders();
+  const now = Date.now();
+  $('#orders').innerHTML = S.orders.map((o, k) => {
+    if (o.wait) return `<div class="order wait"><div class="od-wait">⏳</div><div class="od-body"><b>Коллекционер скоро появится</b><small class="muted">Новый заказ через <span data-left="${o.wait}">${fmtDur((o.wait - now) / 1000)}</span></small></div></div>`;
+    const i = orderItem(o), b = BOXES[BOXMAP.get(o.b)], m = orderMatches(o), it = ITEMS[i];
+    return `<div class="order ${m.length ? 'ready' : ''}" style="--c:${tcol(it.r)}">${itemCard({ i, w: b.variants?.[i] }, { price: itemEV(i, b), got: !!S.found[o.k] })}
+      <div class="od-body"><b>${esc(fullName(i))}</b>
+        <small class="muted">${esc(tierName(it))} · кейс «${esc(b.n)}» · шанс ${pct(o.p * 100)} за открытие</small>
+        <div class="od-rw">Награда <b>${fmt(o.r)}</b> <span class="muted">· +1 очко звания · +40 опыта</span></div>
+        <small class="muted">Заказ действует ещё <span data-left="${o.until}">${fmtDur((o.until - now) / 1000)}</span></small>
+        <div class="od-act">${m.length ? `<button class="btn green" data-od="${k}">Сдать${m[0].st ? ' ST™' : ''} ${WEAR[wearIdx(m[0].fl)] && !it.v && !isFlat(it) ? WEAR[wearIdx(m[0].fl)].s : ''} (цена ${fmt(priceOf(m[0]))})</button>` : `<button class="btn primary" data-odbox="${esc(o.b)}">Открыть «${esc(b.n)}» · ${fmt(boxCost(b))}</button>`}
+          <button class="btn ghost" data-odskip="${k}">Отказаться</button></div></div></div>`;
+  }).join('');
+  $('#ordersInfo').textContent = `Выполнено заказов: ${S.st.orders}`;
+}
+RENDER.orders = renderOrders;
+$('#orders').addEventListener('click', e => {
+  let c;
+  if ((c = e.target.closest('[data-odbox]'))) { openBoxPage(BOXMAP.get(c.dataset.odbox)); return; }
+  if ((c = e.target.closest('[data-odskip]'))) { S.orders[+c.dataset.odskip] = { wait: Date.now() + ORDER_SKIP }; save(); renderOrders(); renderNav(); return; }
+  if (!(c = e.target.closest('[data-od]'))) return;
+  const k = +c.dataset.od, o = S.orders[k], x = o && o.k && orderMatches(o)[0]; if (!x) return;
+  const before = rankOf();
+  removeUids(new Set([x.u])); addMoney(o.r); S.rp++; S.st.orders++; addXP(40);
+  S.orders[k] = { wait: Date.now() + ORDER_NEXT };
+  const r = c.getBoundingClientRect(); FX.burst(r.left + r.width / 2, r.top, ['#3ee08f', '#ffc15e', '#fff'], 60);
+  toast('📋 Заказ выполнен', `+${fmt(o.r)} · +1 очко звания`, 'good'); beep('win');
+  if (rankOf() > before) { toast('Новое звание!', `${RANKS[rankOf()][0]} · доход +${rankOf() * 5}%`, 'gold'); beep('rare'); }
+  save(); renderTop(); renderNav(); renderOrders(); checkAch();
 });
 
 // ---------- казино ----------
@@ -1695,6 +1745,8 @@ const ACH = [
   ['jp', '💰', 'Джекпот!', 'Выиграйте джекпот', () => S.st.jackpots >= 1, 50],
   ['bt1', '⚔️', 'Гладиатор', 'Выиграйте батл кейсов', () => S.st.battleWins >= 1, 25],
   ['bt10', '🛡️', 'Чемпион арены', '10 побед в батлах', () => S.st.battleWins >= 10, 250],
+  ['or1', '📋', 'Под заказ', 'Выполните заказ коллекционера', () => S.st.orders >= 1, 10],
+  ['or25', '🤝', 'Поставщик', '25 заказов коллекционеров', () => S.st.orders >= 25, 150],
   ['al1', '📗', 'Альбом', 'Соберите все предметы контейнера', () => albumCount() >= 1, 20],
   ['al10', '📚', 'Библиотекарь', '10 собранных коллекций', () => albumCount() >= 10, 400],
   ['bn25', '🎁', 'Охотник за тайниками', 'Поймайте 25 бонус-дропов', () => S.st.bonuses >= 25, 40],
@@ -1722,7 +1774,7 @@ function renderProfile() {
     ['Открыто', st.opened], ['Потрачено', fmt(st.spent)], ['Стоимость дропа', fmt(st.dropValue)],
     ['Окупаемость', st.spent ? Math.round(st.dropValue / st.spent * 100) + '%' : '—'], ['Ножей и перчаток', st.knives], ['StatTrak™', st.stDrops],
     ['Наклеек', st.stickers], ['Сувениров', st.souvenirs], ['Продано на', fmt(st.sold)], ['Миссий', st.missions], ['Контрактов', st.tradeups],
-    ['Апгрейдов', `${st.upWins} / ${st.upWins + st.upLoss}`], ['Батлов', `${st.battleWins} / ${st.battles}`], ['Бонус-дропов', st.bonuses],
+    ['Апгрейдов', `${st.upWins} / ${st.upWins + st.upLoss}`], ['Батлов', `${st.battleWins} / ${st.battles}`], ['Бонус-дропов', st.bonuses], ['Заказов', st.orders], ['Бесплатных кейсов', st.freeOpened],
     ['Альбом', `${albumCount()} колл. · +${albumCount()}% дохода`], ['Найдено предметов', `${Object.keys(S.found).length} / ${ITEMS.length}`], ['Казино', (st.gambleNet >= 0 ? '+' : '') + fmt(st.gambleNet)],
     ['Лучший краш', st.crashBest ? st.crashBest.toFixed(2) + '×' : '—'], ['Мин. float', st.lowFloat < 1 ? st.lowFloat.toFixed(6) : '—'],
     ['Инвентарь', `${S.inv.length} · ${fmt(invVal)}`], ['Лучший дроп', best != null ? `${fullName(best, st.best.st)} · ${fmt(st.best.p)}` : '—'],
@@ -1783,6 +1835,8 @@ setInterval(() => {
   saveAcc += dt; uiAcc += dt;
   if (uiAcc > 1) {
     uiAcc = 0; checkAch();
+    if (tickOrders()) { renderNav(); if (curTab === 'orders') renderOrders(); }
+    else $$('[data-left]').forEach(el => { el.textContent = fmtDur(Math.max(0, +el.dataset.left - Date.now()) / 1000); });
     if (curTab === 'clicker') { $('#perSec').textContent = fmt(perSec()); $('#perClick').textContent = fmt(perClick()); $('#quickUpg').innerHTML = Object.keys(UPG).filter(k => UPG[k].quick).map(upgRow).join(''); }
     if (curTab === 'shop') renderShop();
   }
@@ -1796,11 +1850,10 @@ renderNav(); renderTop(); renderClicker(); checkAch();
 if (S.set.seen !== VERSION) {
   if (S.st.opened || S.st.clicks) setTimeout(() => modal(`<h2>Обновление<button class="btn ghost" data-close>✕</button></h2>
     <ul class="news">
-      <li><b>☁ Облако и рейтинг.</b> В профиле можно создать аккаунт и перенести прогресс на другое устройство. Выберите сохранение — дальше оно обновляется автоматически. Рейтинги по капиталу, лучшему дропу, открытиям, батлам и званию.</li>
-      <li><b>💎 Настоящие фазы Doppler.</b> Phase 1–4, Ruby, Sapphire, Black Pearl и Emerald — отдельные картинки и рыночные цены.</li>
-      <li><b>🔬 Float и Case Hardened.</b> Редкий float добавляет премию. Цвет Case Hardened меняется по игровому паттерну: больше синего — выше цена.</li>
-      <li><b>🏷️ Мастерская наклеек.</b> Пять мест, предпросмотр, поиск и фильтры; наклейку можно перетащить на оружие. Часть её цены добавляется к скину.</li>
-      <li><b>💲 Проверка цен.</b> Обновления рынка проходят тесты экономики до публикации. В цену открытия включены премии за float и паттерны.</li>
+      <li><b>⚖️ Новый баланс.</b> Автокликер дорожает быстрее, чем растёт доход: каждый уровень окупается дольше (время окупаемости видно в улучшении). Продажа предметов — с комиссией 10%, как на торговой площадке.</li>
+      <li><b>🛒 Маркет закрыт.</b> Любой скин теперь нужно выбить, скрафтить контрактом или поднять апгрейдом. Если маркет был куплен, $30 вернулись на баланс.</li>
+      <li><b>📋 Заказы коллекционеров.</b> Новая вкладка: три заказа на конкретные предметы из доступных кейсов. Платят больше рынка и дают очко звания.</li>
+      <li><b>🎁 Бесплатные кейсы.</b> За каждый новый уровень и иногда в бонус-дропе кликера — бесплатное открытие авторского кейса.</li>
     </ul><div class="modal-actions"><button class="btn primary" data-close>Играть</button></div>`), 900);
   S.set.seen = VERSION; save();
 }

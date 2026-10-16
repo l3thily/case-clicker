@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Case Clicker</title>
-<meta name="description" content="Case Clicker на настоящих кейсах CS2: коллекции, наклейки, автографы, контракты, апгрейд, казино. Реальные шансы и цены Steam Market.">
+<meta name="description" content="Case Clicker на настоящих кейсах CS2: коллекции, наклейки, автографы, контракты, апгрейд, заказы коллекционеров, казино. Реальные шансы и цены Steam Market.">
 <meta name="theme-color" content="#0a0d14">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='6' y='16' width='52' height='36' rx='5' fill='%23ff9f1c'/><rect x='6' y='26' width='52' height='6' fill='%23a85a00'/><rect x='26' y='22' width='12' height='14' rx='2' fill='%23fff3d6'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="css/style.css?v=20e17e871cf4">
+<link rel="stylesheet" href="css/style.css?v=aa05f12a58b9">
 </head>
 <body>
 <canvas id="bgfx" aria-hidden="true"></canvas>
@@ -179,16 +179,13 @@
         </div>
       </section>
 
-      <!-- МАРКЕТ -->
-      <section id="tab-market" class="tab">
-        <div class="subtabs" id="mkTabs"></div>
-        <div class="toolbar">
-          <input id="mkSearch" type="search" placeholder="Поиск: AK-47, Karambit, s1mple…">
-          <select id="mkRarity"><option value="">Любое качество</option></select>
-          <select id="mkSort"><option value="cheap">Дешевле</option><option value="exp">Дороже</option></select>
-          <label class="check"><input type="checkbox" id="mkST"> StatTrak™</label>
+      <!-- ЗАКАЗЫ -->
+      <section id="tab-orders" class="tab">
+        <div class="panel glass">
+          <h2>Заказы коллекционеров <small class="muted" id="ordersInfo"></small></h2>
+          <p class="muted">Коллекционеры ищут конкретные предметы из доступных вам кейсов и платят больше рынка, без комиссии. Сдаётся самый дешёвый подходящий экземпляр, избранное и экипированное не трогаются. Заказ действует 3 часа.</p>
+          <div id="orders" class="orders"></div>
         </div>
-        <div id="mkGrid" class="item-grid"></div>
       </section>
 
       <!-- КАЗИНО -->
@@ -229,7 +226,7 @@
 <script src="js/valuation.js?v=2cb4b8f68e77"></script>
 <script src="js/custom-cases.js?v=2d1484cb0f33"></script>
 <script src="js/economy.js?v=72d2e413c9bc"></script>
-<script src="js/game.js?v=1e990c46ce8c"></script>
+<script src="js/game.js?v=b9c2fc35fb2c"></script>
 <script src="js/cloud.js?v=54b0be5a5970"></script>
 </body>
 </html>
