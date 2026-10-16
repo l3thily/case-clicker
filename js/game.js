@@ -43,9 +43,10 @@ const LVL_MAX = 40;
 const lvlNeed = l => 100 + 25 * l;
 const MEDAL_COL = ['#9aa4b1', '#3ee08f', '#4b9bff', '#a368ff', '#e04bd8', '#ff5a5f', '#ffd45c'];
 
+const AUTO_GROWTH = 1.18;
 const UPG = {
   click: { n: 'Сила клика', ic: '👆', d: l => `+${fmt(clickBase(l + 1) - clickBase(l))} за клик`, cost: l => 1 * 1.16 ** l, max: 250, quick: 1 },
-  auto: { n: 'Автокликер', ic: '🤖', d: l => `+${fmt(autoBase(l + 1) - autoBase(l))}/сек`, cost: l => 4 * 1.18 ** l, max: 250, quick: 1 },
+  auto: { n: 'Автокликер', ic: '🤖', d: l => `+${fmt(autoGain(l) * incomeMult())}/сек · прирост +18%/ур.`, cost: l => 4 * AUTO_GROWTH ** l, max: 250, quick: 1 },
   crit: { n: 'Хедшот', ic: '🎯', d: l => `Шанс клика ×10: ${l * 2}% → ${(l + 1) * 2}%`, cost: l => 15 * 1.55 ** l, max: 25, quick: 1 },
   combo: { n: 'Комбо', ic: '🔥', d: l => `Макс. комбо ×${comboMax(l).toFixed(2)} → ×${comboMax(l + 1).toFixed(2)}`, cost: l => 10 * 1.7 ** l, max: 14 },
   offline: { n: 'Оффлайн-доход', ic: '🌙', d: l => `Копится до ${l + 1} → ${l + 2} ч, пока вас нет`, cost: l => 25 * 2.1 ** l, max: 11 },
@@ -54,7 +55,9 @@ const UPG = {
   keydisc: { n: 'Скидка на ключи', ic: '🔑', d: l => `Ключ −${l * 2}% → −${(l + 1) * 2}%`, cost: l => 30 * 1.8 ** l, max: 10 },
 };
 const clickBase = l => 0.05 + l * 0.05 * (1 + l / 50);
-const autoBase = l => l * 0.03 * (1 + l / 50);
+// Each purchase adds 18% more income, matching the growth of its price.
+const autoGain = l => 0.03 * AUTO_GROWTH ** l;
+const autoBase = l => 0.03 * Math.expm1(l * Math.log(AUTO_GROWTH)) / (AUTO_GROWTH - 1);
 const comboMax = l => 1.5 + 0.25 * l;
 
 const UNLOCKS = [
