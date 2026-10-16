@@ -48,9 +48,9 @@ const UPG = {
   crit: { n: 'Хедшот', ic: '🎯', d: l => `Шанс клика ×10: ${l * 2}% → ${(l + 1) * 2}%`, cost: l => 15 * 1.55 ** l, max: 25, quick: 1 },
   combo: { n: 'Комбо', ic: '🔥', d: l => `Макс. комбо ×${comboMax(l).toFixed(2)} → ×${comboMax(l + 1).toFixed(2)}`, cost: l => 10 * 1.7 ** l, max: 14 },
   offline: { n: 'Оффлайн-доход', ic: '🌙', d: l => `Копится до ${l + 1} → ${l + 2} ч, пока вас нет`, cost: l => 25 * 2.1 ** l, max: 11 },
-  luck: { n: 'Удача', ic: '🍀', d: l => `Шанс редкого дропа +${l * 4}% → +${(l + 1) * 4}%`, cost: l => 60 * 2.2 ** l, max: 10 },
+  luck: { n: 'Удача', ic: '🍀', d: l => `Шанс редкого дропа +${l * 2}% → +${(l + 1) * 2}%`, cost: l => 60 * 2.2 ** l, max: 10 },
   stattrak: { n: 'StatTrak™', ic: '🔢', d: l => `Шанс StatTrak™ ${10 + l}% → ${11 + l}%`, cost: l => 40 * 1.9 ** l, max: 10 },
-  keydisc: { n: 'Скидка на ключи', ic: '🔑', d: l => `Ключ −${l * 3}% → −${(l + 1) * 3}%`, cost: l => 30 * 1.8 ** l, max: 10 },
+  keydisc: { n: 'Скидка на ключи', ic: '🔑', d: l => `Ключ −${l * 2}% → −${(l + 1) * 2}%`, cost: l => 30 * 1.8 ** l, max: 10 },
 };
 const clickBase = l => 0.05 + l * 0.05 * (1 + l / 50);
 const autoBase = l => l * 0.03 * (1 + l / 50);
@@ -77,7 +77,7 @@ const UNL = Object.fromEntries(UNLOCKS.map(u => [u[0], u]));
 
 // ---------- данные ----------
 const ITEMS = D.items;
-const BOXES = [...D.boxes, ...window.buildCustomCases(D)];
+const BOXES = [...window.repriceContainers(D, D.boxes), ...window.buildCustomCases(D)];
 const keyOf = it => (it.t === 'sv' ? 'Souvenir ' : '') + it.n;
 const KEYMAP = new Map(ITEMS.map((it, i) => [keyOf(it), i]));
 const BOXMAP = new Map(BOXES.map((b, i) => [b.n, i]));
@@ -110,7 +110,7 @@ function variantPrice(i, w, st) {
   if (st) return nearest(it.st, w) ?? +((nearest(it.p, w) || 0.03) * 1.4).toFixed(2);
   return nearest(it.p, w) ?? 0.03;
 }
-const priceOf = x => variantPrice(x.i, ITEMS[x.i].v ? 0 : wearIdx(x.fl), x.st);
+const priceOf = x => +(variantPrice(x.i, ITEMS[x.i].v ? 0 : wearIdx(x.fl), x.st) * patternOf(x)[1]).toFixed(2);
 function nameParts(i, st) {
   const it = ITEMS[i];
   if (it.t === 's') return [it.n.slice(10), 'Наклейка'];
@@ -122,6 +122,40 @@ function nameParts(i, st) {
   if (st) w = w.startsWith('★ ') ? '★ StatTrak™ ' + w.slice(2) : 'StatTrak™ ' + w;
   if (it.t === 'sv') w = 'Сувенирный ' + w;
   return s ? [s, w] : [w, 'Ванильный'];
+}
+// ---------- паттерны ----------
+// Особый паттерн зависит от seed (0–999) и меняет цену предмета. Множители нормированы:
+// в среднем по всем seed семейство стоит ровно как на рынке, поэтому купить скин на маркете
+// и «выловить» паттерн в плюс нельзя — это лотерея внутри предмета.
+const BLUE_GEMS = new Set([661, 670, 321, 955, 151, 179, 555, 828, 760, 168, 592, 387, 809, 868, 442, 4, 32, 147, 278, 905]);
+const PHASES = s => { const ph = 1 + (s % 4); return [`Phase ${ph}`, [0.95, 1.25, 0.95, 1.15][ph - 1]]; };
+const PATTERNS = [
+  [/Gamma Doppler/, s => (s < 20 ? ['Emerald', 6] : PHASES(s))],
+  [/Doppler/, s => (s < 15 ? ['Ruby', 6] : s < 30 ? ['Sapphire', 7] : s < 40 ? ['Black Pearl', 4] : PHASES(s))],
+  [/Marble Fade/, s => (s < 25 ? ['Fire & Ice', 3.5] : s < 70 ? ['Fake Fire & Ice', 1.35] : s % 5 === 0 ? ['Tricolor', 1.15] : [null, 1])],
+  [/\| Fade/, s => { const f = 80 + (s * 7919 % 1000) / 999 * 20; return [`Fade ${f.toFixed(1)}%`, f >= 99.5 ? 1.6 : f >= 97 ? 1.25 : f >= 90 ? 1.05 : 0.9]; }],
+  [/Case Hardened/, (s, it) => (BLUE_GEMS.has(s) ? ['Blue Gem', it.t === 'k' || it.n.startsWith('AK-47') ? 15 : 5] : s % 100 < 10 ? ['Много синего', 1.6] : s % 100 < 40 ? [null, 1] : ['Золото', 0.9])],
+  [/Crimson Web/, s => (s % 100 < 6 ? ['Центральная паутина', 1.6] : s % 100 < 20 ? ['Две паутины', 1.15] : [null, 1])],
+  [/Slaughter/, s => (s % 100 < 4 ? ['Diamond', 1.4] : s % 100 < 9 ? ['Heart', 1.25] : s % 100 < 14 ? ['Angel', 1.15] : [null, 1])],
+  [/Fire Serpent/, s => (s % 100 < 5 ? ['Голова змеи', 1.5] : [null, 1])],
+  [/Hypnotic|Lore|Autotronic/, s => (s % 100 < 5 ? ['Идеальная сетка', 1.3] : [null, 1])],
+  [/Tiger Tooth|Damascus Steel|Rust Coat/, s => (s % 100 < 4 ? ['Редкий узор', 1.3] : [null, 1])],
+  [/Heat Treated|Blue Steel/, s => (s % 100 < 5 ? ['Синий отлив', 1.5] : [null, 1])],
+  [/Phoenix Blacklight|Wild Lotus|Gold Arabesque|Dragon Lore|Howl|Medusa|Fire Elemental|Asiimov|Printstream/, s => (s < 10 ? ['Тир-1 паттерн', 1.4] : [null, 1])],
+];
+const patCache = new Map(); // индекс предмета → [функция, норма] | null
+function patFamily(i) {
+  if (patCache.has(i)) return patCache.get(i);
+  const it = ITEMS[i], rule = isFlat(it) || it.v ? null : PATTERNS.find(([re]) => re.test(it.n));
+  let fam = null;
+  if (rule) { let sum = 0; for (let s = 0; s < 1000; s++) sum += rule[1](s, it)[1]; fam = [rule[1], sum / 1000]; }
+  patCache.set(i, fam); return fam;
+}
+function patternOf(x) { // → [название | null, множитель цены]
+  const fam = x.s == null ? null : patFamily(x.i);
+  if (!fam) return [null, 1];
+  const [name, m] = fam[0](x.s, ITEMS[x.i]);
+  return [name, m / fam[1]];
 }
 function fullName(i, st) {
   const it = ITEMS[i];
@@ -146,7 +180,7 @@ CATALOG.forEach((v, k) => { v.id = k; });
 
 // ---------- состояние ----------
 const SAVE_KEY = 'caseclicker.v2';
-const VERSION = '2026.10.16';
+const VERSION = '2026.10.16b';
 const fresh = () => ({
   v: 2, money: 0.5, xp: 0, lvl: 1, medals: 0, rp: 0, uid: 1, inv: [], eq: null,
   up: Object.fromEntries(Object.keys(UPG).map(k => [k, 0])), unl: {},
@@ -194,14 +228,15 @@ const boostAuto = () => (Date.now() < boost.autoUntil ? boost.auto : 1);
 const baseSec = () => autoBase(S.up.auto) * incomeMult(); // для наград: без временных бустов
 const perClick = () => clickBase(S.up.click) * incomeMult() * boostClick();
 const perSec = () => baseSec() * boostAuto();
-const keyPrice = () => +(D.key * (1 - 0.03 * S.up.keydisc)).toFixed(2);
-const boxCost = b => b.p + (KINDS[b.k].key ? keyPrice() : 0);
+// у дешёвых кейсов ключ дешевле $2.49 (js/economy.js), без аргумента — обычный ключ
+const keyPrice = (b) => +((b?.key ?? D.key) * (1 - 0.02 * S.up.keydisc)).toFixed(2);
+const boxCost = b => +(b.p + (KINDS[b.k].key ? keyPrice(b) : 0)).toFixed(2);
 function boxOdds(b) {
   if (b.weights) { const total = Object.values(b.weights).reduce((a,v) => a+v,0); return Object.entries(b.weights).map(([t,w]) => [+t,w/total]); }
   const tiers = Object.keys(b.g).map(Number).sort((x, y) => x - y);
   const caseLike = b.k === 'case' || b.k === 'terminal';
   let w = tiers.map(t => caseLike ? (CASE_ODDS[t] ?? 1) : 5 ** -(t - tiers[0]));
-  const L = 1 + S.up.luck * 0.04;
+  const L = 1 + S.up.luck * 0.02;
   w = w.map((x, k) => (k ? x * L : x));
   const sum = w.reduce((s, x) => s + x, 0);
   return tiers.map((t, k) => [t, w[k] / sum]);
@@ -322,7 +357,7 @@ function itemCard(x, o = {}) {
   const [title, sub] = nameParts(x.i, x.st);
   const price = o.price ?? (x.fl != null ? priceOf(x) : variantPrice(x.i, w ?? 2, x.st));
   return `<div class="item ${o.cls || ''}" style="--c:${tcol(it.r)}" ${o.attr || ''}><i class="shine"></i>
-    <span class="w">${w != null ? WEAR[w].s : ''}</span>${x.st ? '<span class="stt">ST™</span>' : it.t === 'sv' ? '<span class="stt sv">SV</span>' : ''}${x.fav ? '<span class="fav" title="Избранное">♥</span>' : ''}${o.got ? '<span class="got" title="Есть в альбоме">✓</span>' : ''}
+    <span class="w">${w != null ? WEAR[w].s : ''}</span>${x.st ? '<span class="stt">ST™</span>' : it.t === 'sv' ? '<span class="stt sv">SV</span>' : ''}${x.fav ? '<span class="fav" title="Избранное">♥</span>' : ''}${o.got ? '<span class="got" title="Есть в альбоме">✓</span>' : ''}${x.s != null && patternOf(x)[0] ? `<span class="pat ${patternOf(x)[1] >= 1.5 ? 'hot' : ''}">${esc(patternOf(x)[0])}</span>` : ''}
     <img loading="lazy" src="${img(it.img)}" alt="">
     <div class="nm">${esc(title)}</div><div class="sub">${esc(sub)}</div>
     ${x.stickers?.length ? `<div class="sticker-strip">${stickerImages(x)}</div>` : ''}${o.extra || ''}<div class="pr">${fmt(price)}</div>${o.info ? `<button class="ibtn" data-info="${x.u}">i</button>` : ''}</div>`;
@@ -606,7 +641,7 @@ function renderCases() {
   $('#kindTabs').innerHTML = Object.entries(KINDS).map(([k, v]) => `<button data-kind="${k}" class="${k === kind ? 'on' : ''}">${v.ic} ${v.n} ${unlocked(v.unl) ? `<small>${BOXES.filter(b => b.k === k).length}</small>` : '🔒'}</button>`).join('');
   $('#caseSort option[value="new"]').textContent = kind === 'custom' ? 'По прогрессу' : 'Сначала новые';
   const K = KINDS[kind];
-  $('#kindInfo').innerHTML = K.key ? `Ключ: <b>${fmt(keyPrice())}</b>` : 'Открывается без ключа';
+  $('#kindInfo').innerHTML = K.key ? `Цена с ключом · ключ до <b>${fmt(keyPrice())}</b>` : 'Открывается без ключа';
   if (!unlocked(K.unl)) { $('#caseGrid').innerHTML = lockWall(K.unl); return; }
   const q = $('#caseSearch').value.trim().toLowerCase(), sort = $('#caseSort').value;
   let list = BOXES.map((b, i) => ({ b, i })).filter(x => x.b.k === kind && [x.b.n,x.b.desc || ''].join(' ').toLowerCase().includes(q) && (kind !== 'custom' || ((customSeries === 'all' || x.b.series === customSeries) && (customAccess === 'all' || (customAccess === 'ready' ? customReady(x.b) : !customReady(x.b))))));
@@ -669,7 +704,7 @@ function openBoxPage(bi) {
   curBox = bi; const b = BOXES[bi];
   $('#openTitle').textContent = b.n;
   const ev = boxEV(b), cost = boxCost(b);
-  $('#openSub').innerHTML = `${KINDS[b.k].n}${b.k === 'custom' ? ' · ' + esc(b.desc) + ' · без StatTrak, износ указан на карточке' : ' · ' + b.date.slice(0, 4)} · средний дроп ${fmt(ev)} (окупаемость ${Math.round(ev / cost * 100)}%)`;
+  $('#openSub').innerHTML = `${KINDS[b.k].n}${b.k === 'custom' ? ' · ' + esc(b.desc) + ' · без StatTrak, износ указан на карточке' : ' · ' + b.date.slice(0, 4)} · средний дроп ${fmt(ev)} (окупаемость ${Math.round(ev / cost * 100)}%) · лучший дроп до ${fmt(window.ECONOMY.boxMax(D, b))}${b.mp != null && Math.abs(b.mp - b.p) > 0.05 ? ` · на Steam ${fmt(b.mp)}` : ''}`;
   $('#rollArea').innerHTML = heroHTML(b);
   $('#fastOpen').checked = S.set.fast;
   renderQty();
@@ -699,7 +734,7 @@ function renderQty() {
   btn.textContent = `Открыть ${qty > 1 ? '×' + qty + ' ' : ''}· ${fmt(boxCost(b) * qty)}`;
   btn.disabled = rolling || !customReady(b);
   if (!customReady(b)) btn.textContent = '🔒 ' + customRequirement(b);
-  btn.title = KINDS[b.k].key ? `${fmt(b.p)} + ключ ${fmt(keyPrice())}` : '';
+  btn.title = KINDS[b.k].key ? `${fmt(b.p)} + ключ ${fmt(keyPrice(b))}` : '';
 }
 $('#qty').addEventListener('click', e => { const b = e.target.closest('[data-q]'); if (b && !rolling) { qty = +b.dataset.q; renderQty(); } });
 $('#backToCases').addEventListener('click', () => showTab('cases'));
@@ -734,6 +769,8 @@ function trackDrop(x) {
   if (it.t === 's') S.st.stickers++;
   if (it.t === 'sv') S.st.souvenirs++;
   if (!it.v && !isFlat(it) && x.fl < S.st.lowFloat) S.st.lowFloat = x.fl;
+  const [pat, pm] = patternOf(x);
+  if (pat && pm >= 1.5) { toast('💎 Редкий паттерн: ' + pat, `${fullName(x.i, x.st)} · ${fmt(p)}`, 'gold'); S.st.rarePats = (S.st.rarePats || 0) + 1; }
   if (!S.st.best || p > S.st.best.p) S.st.best = { k: keyOf(it), st: x.st, p };
   ev('tier', 1, { tier: it.r });
 }
@@ -768,8 +805,9 @@ $('#openBtn').addEventListener('click', async () => {
     for (let t = 0; t < N; t++) tiles.push(t === WIN ? drops[k].i : pick(b.g[rollTier(b)]));
     const strip = $('.strip', r);
     strip.innerHTML = tiles.map(tileHTML).join('');
-    const tw = strip.firstElementChild.getBoundingClientRect().width;
-    const target = -(WIN * tw + tw / 2 - r.clientWidth / 2) + (rnd() - 0.5) * tw * 0.8;
+    // считаем по фактическому положению выигрышной плитки, а не «индекс × ширина первой»
+    const win = strip.children[WIN], tw = win.offsetWidth;
+    const target = -(win.offsetLeft + tw / 2 - r.clientWidth / 2) + (rnd() - 0.5) * tw * 0.8;
     strip.getBoundingClientRect();
     strip.style.transition = `transform ${dur + k * lag}ms cubic-bezier(.08,.62,.1,1)`;
     strip.style.transform = `translateX(${target}px)`;
@@ -795,9 +833,13 @@ function dropDetails(x) {
     <img src="${img(it.img, '512fx384f')}" alt="">
     <div class="nm" style="color:${tcol(it.r)}">${esc(title)}</div>
     <div class="meta">${esc(sub)} · ${tierName(it)}${plain ? '' : ' · ' + WEAR[wearIdx(x.fl)].n}</div>
-    ${plain ? '' : `<div class="float-bar"><i style="left:${x.fl * 100}%"></i></div><div class="meta">Float ${x.fl.toFixed(6)} · паттерн ${x.s}</div>`}
+    ${plain ? '' : `<div class="float-bar"><i style="left:${x.fl * 100}%"></i></div><div class="meta">Float ${x.fl.toFixed(6)} · паттерн ${x.s}${patLine(x)}</div>`}
     <div class="meta small">${esc(BOXES[x.c]?.n || '')}</div>
     ${x.stickers?.length ? `<div class="sticker-strip large">${stickerImages(x)}</div>` : ''}<div class="pr">${fmt(priceOf(x))}</div></div>`;
+}
+function patLine(x) {
+  const [name, m] = patternOf(x);
+  return name ? ` · <b class="pat-txt ${m >= 1.5 ? 'hot' : ''}">${esc(name)}</b> (${m >= 1 ? '+' : ''}${Math.round((m - 1) * 100)}% к цене)` : '';
 }
 function celebrate(top) {
   const cols = top === 6 ? ['#e4ae39', '#ffd45c', '#fff6d5', '#ff9f1c'] : [tcol(top), '#fff', tcol(Math.max(0, top - 1))];
@@ -1647,12 +1689,13 @@ renderNav(); renderTop(); renderClicker(); checkAch();
 if (S.set.seen !== VERSION) {
   if (S.st.opened || S.st.clicks) setTimeout(() => modal(`<h2>Обновление<button class="btn ghost" data-close>✕</button></h2>
     <ul class="news">
-      <li><b>⚔️ Батлы кейсов.</b> Открывайте кейс против 1–3 ботов, победитель забирает весь дроп. Разблокировка в магазине.</li>
-      <li><b>📗 Альбом коллекций.</b> Первый дроп каждого предмета отмечается ✓. Собрали весь контейнер — награда ×5 от цены и +1% дохода навсегда.</li>
-      <li><b>🎁 Бонус-дроп.</b> В кликере время от времени появляется золотой кейс: деньги, клик ×5 или автокликер ×4.</li>
-      <li><b>✦ 6 новых авторских кейсов:</b> «Эконом-раунд», «Пистолетный раунд», «Зверинец», «Лесной пожар», «Подброс монеты», «Штыковая линия».</li>
-      <li><b>Удобство:</b> открытие ×10, автопродажа дешёвого дропа, ♥ избранное (защита от массовой продажи), пробел — клик и открытие, Enter — «Ещё раз».</li>
-      <li><b>Баланс:</b> ежедневная награда, награды миссий и уровней теперь растут вместе с автокликером.</li>
+      <li><b>💲 Честные цены.</b> Цена каждого контейнера теперь считается от содержимого: средний возврат ~80%, и в любом кейсе есть предметы дороже открытия. Коллекционные сувениры за $10 000 больше не стоят как один скин.</li>
+      <li><b>🐉 Полные составы.</b> Вернулись предметы без продаж в Steam: AWP | Dragon Lore в коблстоунах, iBUYPOWER Holo и Titan Holo в Katowice 2014 и ещё ~260 предметов.</li>
+      <li><b>💎 Паттерны.</b> Ruby, Sapphire, Black Pearl, Emerald, фазы Doppler, Fire &amp; Ice, Fade %, Blue Gem и другие — редкий паттерн дороже обычного.</li>
+      <li><b>🎯 Лента при ×5 и ×10</b> теперь останавливается точно на выпавшем предмете.</li>
+      <li><b>✦ Авторские кейсы:</b> в каждой редкости 3 «козыря» дороже открытия.</li>
+      <li><b>Баланс:</b> «Удача» +2% за уровень, «Скидка на ключи» −2% — чтобы кейсы не печатали деньги на максимуме.</li>
+      <li><b>Апгрейдер:</b> цели сортируются по цене, кнопки ×N показывают подходящий диапазон.</li>
     </ul><div class="modal-actions"><button class="btn primary" data-close>Играть</button></div>`), 900);
   S.set.seen = VERSION; save();
 }

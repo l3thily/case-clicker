@@ -97,9 +97,14 @@ window.buildCustomCases = function (data) {
         if(from && !fromPools.get(from)?.has(i))return [];
         const possible=it.v?[0]:[2,1,3,0,4].filter(w=>it.p[w]>0 && Math.min(it.f[1],bounds[w][1])-Math.max(it.f[0],bounds[w][0])>.00001);
         const w=possible.find(w=>it.p[w]>0); if(w==null)return [];
-        return [{i,w,p:it.p[w],distance:Math.abs(Math.log(it.p[w]/target))}];
-      }).sort((a,b)=>a.distance-b.distance || data.items[a.i].n.localeCompare(data.items[b.i].n,'en'));
-      const pool=candidates.slice(0,8); if(!pool.length)continue;
+        return [{i,w,p:it.p[w]}];
+      }).sort((a,b)=>data.items[a.i].n.localeCompare(data.items[b.i].n,'en'));
+      // 5 базовых предметов + 3 «козыря» ×3/×6/×12: в каждом кейсе есть ради чего крутить,
+      // и цена открытия не выше самых дорогих предметов
+      const pool=[], taken=new Set();
+      const nearest=(t,n)=>candidates.filter(v=>!taken.has(v.i)).sort((a,b)=>Math.abs(Math.log(a.p/t))-Math.abs(Math.log(b.p/t))).slice(0,n).forEach(v=>{taken.add(v.i);pool.push(v);});
+      [12,6,3].forEach(m=>nearest(target*.3*m,1)); nearest(target*.3,5);
+      if(!pool.length)continue;
       g[tier]=pool.map(v=>v.i); pool.forEach(v=>{variants[v.i]=v.w;});
     }
     if(!Object.keys(g).length)return null; // A removed theme is hidden, never filled with unrelated drops.

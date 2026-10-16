@@ -25,6 +25,7 @@ for(const b of boxes){
  console.log(`${b.n}: $${b.p.toFixed(2)} · return ${(rtp*100).toFixed(1)}% · ${b.opens} opens / level ${b.level || 1}`);
 }
 assert.ok(boxes[0].p<=.5,'First case must be affordable from a fresh save');
+for(const b of boxes)assert.ok(Math.max(...Object.values(b.g).flat().map(i=>GAME_DATA.items[i].p[b.variants[i]]))>b.p,`${b.n}: every item is cheaper than the case`);
 assert.equal(boxes.find(b=>b.id==='hunt').weights[6],1);
 assert.ok(boxes.filter(b=>['paper','holo'].includes(b.id)).every(b=>Object.values(b.g).flat().every(i=>GAME_DATA.items[i].t==='s')));
 // Weekly data can reorder items without altering authored pools or prices.

@@ -427,3 +427,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--acc)}
 @keyframes flipIn{from{transform:rotateY(90deg) scale(.8);opacity:0}}
 @media(max-width:600px){.bt-arena{gap:6px}.bt-col{padding:6px}.bt-slot{min-height:120px}.bt-head .av{display:none}.roll.mini .tile{flex-basis:80px}}
 .mult button.on{background:var(--acc);border-color:var(--acc);color:#1b1204}
+.item .pat{position:absolute;top:22px;left:9px;z-index:1;max-width:calc(100% - 18px);padding:0 5px;border-radius:5px;background:rgba(136,71,255,.22);color:#c9b3ff;font-size:9.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .pat.hot{background:rgba(228,174,57,.25);color:var(--t6);box-shadow:0 0 10px rgba(228,174,57,.35)}
+.pat-txt{color:#c9b3ff}.pat-txt.hot{color:var(--t6)}
+.tile{min-width:0;overflow:hidden}.tile span{min-width:0}

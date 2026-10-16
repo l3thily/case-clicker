@@ -1,6 +1,8 @@
 """Собирает data/cases.js из открытых источников:
 - состав кейсов/коллекций и картинки: github.com/ByMykel/CSGO-API
-- цены Steam Market: prices.csgotrader.app (last_7d, фолбэки; затем Skinport)
+- цены Steam Market: prices.csgotrader.app (last_7d, фолбэки; затем Skinport, CSFloat, Buff163).
+  Редкие предметы (сувенирный Dragon Lore, холо-наклейки Katowice 2014) в Steam почти не продаются —
+  без запасных источников они пропадали из кейсов.
 Запуск: python3 tools/build_data.py [папка_с_json]  (без аргумента — скачает сам)"""
 import json, sys, os, urllib.request, gzip, datetime
 
@@ -9,6 +11,8 @@ SRC = {
     'skins': 'https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins.json',
     'steam': 'https://prices.csgotrader.app/latest/steam.json',
     'skinport': 'https://prices.csgotrader.app/latest/skinport.json',
+    'csfloat': 'https://prices.csgotrader.app/latest/csfloat.json',
+    'buff163': 'https://prices.csgotrader.app/latest/buff163.json',
 }
 CDN = 'https://community.akamai.steamstatic.com/economy/image/'
 WEARS = ['Factory New', 'Minimal Wear', 'Field-Tested', 'Well-Worn', 'Battle-Scarred']
@@ -36,6 +40,8 @@ def main():
     crates = load('crates', folder)
     skins = {s['name']: s for s in load('skins', folder)}
     steam, skinport = load('steam', folder), load('skinport', folder)
+    csfloat, buff = load('csfloat', folder), load('buff163', folder)
+    fallback_used = []
 
     def price(name):
         p = steam.get(name)
@@ -46,6 +52,12 @@ def main():
         p = skinport.get(name)
         if p and p.get('starting_at'):
             return round(p['starting_at'], 2)
+        for src in (csfloat, buff):
+            p = src.get(name) or {}
+            v = p.get('price') or (p.get('starting_at') or {}).get('price')
+            if v:
+                fallback_used.append(name)
+                return round(v, 2)
         return None
 
     items, index = [], {}
@@ -89,12 +101,12 @@ def main():
             rec['v'] = 1
         return add(key, rec)
 
-    def flat(it, tier, kind):
+    def flat(it, tier, kind, guess=None):
         name = it['name']
         mk = {'sticker': 'Sticker | ', 'autograph': 'Sticker | ', 'patch': 'Patch | ', 'pin': ''}[kind] + name
         if mk in index:
             return index[mk]
-        p = price(mk)
+        p = price(mk) or guess
         if p is None:
             return None
         return add(mk, {'n': mk, 'img': short(it['image']), 'r': tier, 't': 's' if kind in ('sticker', 'autograph') else kind,
@@ -110,7 +122,7 @@ def main():
         cp = price(c['market_hash_name'] or c['name'])
         if cp is None:
             continue
-        pool = {}
+        pool, unpriced = {}, []
         for it in c['contains']:
             t = TIER.get(it['rarity']['name'])
             if t is None:
@@ -119,8 +131,15 @@ def main():
                 i = weapon(it, t, souvenir=kind == 'souvenir')
             else:
                 i = flat(it, t, kind)
+                if i is None:
+                    unpriced.append((it, t))
             if i is not None:
                 pool.setdefault(t, []).append(i)
+        # предмет без цены нигде (не было продаж) не выкидываем: оценка — медиана той же редкости в капсуле
+        for it, t in unpriced:
+            same = sorted(items[j]['p'][0] for j in pool.get(t, []))
+            if same:
+                pool[t].append(flat(it, t, kind, guess=same[len(same) // 2]))
         seen = set()
         for it in c['contains_rare']:
             if it['name'] in seen:
@@ -150,6 +169,7 @@ def main():
     with open(os.path.join(here, '..', 'data', 'cases.js'), 'w') as f:
         f.write('window.GAME_DATA=' + json.dumps(data, ensure_ascii=False, separators=(',', ':')) + ';\n')
     from collections import Counter
+    print(len(set(fallback_used)), 'prices from CSFloat/Buff163')
     print(len(boxes), 'boxes', dict(Counter(b['k'] for b in boxes)), len(items), 'items')
 
 
