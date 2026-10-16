@@ -67,6 +67,7 @@ const UNLOCKS = [
   ['autograph', '✍️', 'Капсулы с автографами', 'Автографы про-игроков мейджоров', 120],
   ['patch', '🎖️', 'Нашивки и пины', 'Патч-паки и коллекционные пины', 80],
   ['crash', '🚀', 'Краш', 'Заберите до взрыва', 100],
+  ['battle', '⚔️', 'Батлы кейсов', 'Открывайте кейсы против ботов: победитель забирает всё', 200],
   ['roulette', '🎡', 'Рулетка', 'Красное, чёрное или зелёное ×14', 150],
   ['mines', '💣', 'Мины', 'Открывайте клетки, обходя мины', 250],
   ['tower', '🗼', 'Башня', 'Поднимайтесь выше — множитель растёт', 400],
@@ -85,6 +86,10 @@ BOXES.forEach((b, bi) => Object.values(b.g).forEach(l => l.forEach(i => {
   const cur = origin.get(i);
   if (cur == null || (BOXES[cur].k !== 'case' && b.k === 'case')) origin.set(i, bi);
 })));
+const inBoxes = new Map(); // предмет → все контейнеры, где он есть (для альбома)
+BOXES.forEach((b, bi) => Object.values(b.g).flat().forEach(i => { if (!inBoxes.has(i)) inBoxes.set(i, []); const l = inBoxes.get(i); if (l[l.length - 1] !== bi) l.push(bi); }));
+// альбом: все предметы контейнера, кроме ★ у обычных кейсов (их сотни, шанс 0.26%)
+const albumPool = b => b._pool || (b._pool = [...new Set(Object.entries(b.g).filter(([t]) => b.k === 'custom' || +t < 6).flatMap(([, l]) => l))]);
 const isFlat = it => it.t === 's' || it.t === 'patch' || it.t === 'pin';
 const tierName = it => (isFlat(it) ? FLAT_T[it.r] : null) || TIERS[it.r].n;
 const tcol = r => TIERS[r].c;
@@ -141,18 +146,19 @@ CATALOG.forEach((v, k) => { v.id = k; });
 
 // ---------- состояние ----------
 const SAVE_KEY = 'caseclicker.v2';
+const VERSION = '2026.10.16';
 const fresh = () => ({
   v: 2, money: 0.5, xp: 0, lvl: 1, medals: 0, rp: 0, uid: 1, inv: [], eq: null,
   up: Object.fromEntries(Object.keys(UPG).map(k => [k, 0])), unl: {},
-  st: { clicks: 0, crits: 0, clickEarn: 0, opened: 0, spent: 0, dropValue: 0, sold: 0, knives: 0, stDrops: 0, tradeups: 0, upWins: 0, upLoss: 0, crashBest: 0, gambleNet: 0, gameWins: 0, bought: 0, best: null, lowFloat: 1, missions: 0, stickers: 0, souvenirs: 0, maxCombo: 1, jackpots: 0 },
-  missions: [], ach: {}, daily: { last: '', streak: 0 }, last: Date.now(),
-  set: { fast: false, sound: true, fx: true, kind: 'custom', invKind: 'all', mkKind: 'w', game: 'crash' },
+  st: { clicks: 0, crits: 0, clickEarn: 0, opened: 0, spent: 0, dropValue: 0, sold: 0, knives: 0, stDrops: 0, tradeups: 0, upWins: 0, upLoss: 0, crashBest: 0, gambleNet: 0, gameWins: 0, bought: 0, best: null, lowFloat: 1, missions: 0, stickers: 0, souvenirs: 0, maxCombo: 1, jackpots: 0, battles: 0, battleWins: 0, bonuses: 0 },
+  missions: [], ach: {}, daily: { last: '', streak: 0 }, last: Date.now(), found: {}, album: {},
+  set: { fast: false, sound: true, fx: true, kind: 'custom', invKind: 'all', mkKind: 'w', game: 'crash', autoSell: 0, btBox: '', seen: '' },
 });
 // в сохранении предметы хранятся по названию, а не индексу — данные пересобираются каждую неделю
-function packItem(x) { return { u: x.u, k: keyOf(ITEMS[x.i]), b: BOXES[x.c]?.n, fl: x.fl, st: x.st ? 1 : 0, s: x.s, t: x.t, stickers: x.stickers || [] }; }
+function packItem(x) { return { u: x.u, k: keyOf(ITEMS[x.i]), b: BOXES[x.c]?.n, fl: x.fl, st: x.st ? 1 : 0, s: x.s, t: x.t, stickers: x.stickers || [], f: x.fav ? 1 : 0 }; }
 function unpackItem(o) {
   const i = KEYMAP.get(o.k); if (i == null) return null;
-  return { u: o.u, i, c: BOXMAP.get(o.b) ?? origin.get(i), fl: o.fl, st: !!o.st, s: o.s, t: o.t, stickers: (o.stickers || []).filter(k => KEYMAP.has(k)).slice(0,5) };
+  return { u: o.u, i, c: BOXMAP.get(o.b) ?? origin.get(i), fl: o.fl, st: !!o.st, s: o.s, t: o.t, stickers: (o.stickers || []).filter(k => KEYMAP.has(k)).slice(0,5), fav: !!o.f };
 }
 let S = fresh();
 try {
@@ -167,6 +173,8 @@ try {
     if (S.eq != null && !S.inv.some(x => x.u === S.eq)) S.eq = null;
   }
 } catch { S = fresh(); }
+S.inv.forEach(x => { S.found[keyOf(ITEMS[x.i])] = 1; });
+BOXES.forEach(b => { if (!S.album[b.n] && albumPool(b).length && albumPool(b).every(i => S.found[keyOf(ITEMS[i])])) S.album[b.n] = Date.now(); });
 function save() {
   S.last = Date.now();
   try { localStorage.setItem(SAVE_KEY, JSON.stringify({ ...S, inv: S.inv.map(packItem) })); } catch {}
@@ -177,9 +185,15 @@ const unlocked = k => !k || !!S.unl[k];
 const rankOf = () => { let r = 0; while (r < RANKS.length - 1 && S.rp >= rankNeed(r + 1)) r++; return r; };
 const eqItem = () => S.inv.find(x => x.u === S.eq);
 const eqBonus = () => { const x = eqItem(); return x ? 0.2 * Math.log10(1 + priceOf(x)) : 0; };
-const incomeMult = () => (1 + 0.05 * rankOf()) * (1 + 0.1 * S.medals) * (1 + eqBonus());
-const perClick = () => clickBase(S.up.click) * incomeMult();
-const perSec = () => autoBase(S.up.auto) * incomeMult();
+const albumCount = () => Object.keys(S.album).length;
+const incomeMult = () => (1 + 0.05 * rankOf()) * (1 + 0.1 * S.medals) * (1 + eqBonus()) * (1 + 0.01 * albumCount());
+// временные бусты из бонус-дропа кликера (не сохраняются)
+const boost = { click: 1, clickUntil: 0, auto: 1, autoUntil: 0 };
+const boostClick = () => (Date.now() < boost.clickUntil ? boost.click : 1);
+const boostAuto = () => (Date.now() < boost.autoUntil ? boost.auto : 1);
+const baseSec = () => autoBase(S.up.auto) * incomeMult(); // для наград: без временных бустов
+const perClick = () => clickBase(S.up.click) * incomeMult() * boostClick();
+const perSec = () => baseSec() * boostAuto();
 const keyPrice = () => +(D.key * (1 - 0.03 * S.up.keydisc)).toFixed(2);
 const boxCost = b => b.p + (KINDS[b.k].key ? keyPrice() : 0);
 function boxOdds(b) {
@@ -308,7 +322,7 @@ function itemCard(x, o = {}) {
   const [title, sub] = nameParts(x.i, x.st);
   const price = o.price ?? (x.fl != null ? priceOf(x) : variantPrice(x.i, w ?? 2, x.st));
   return `<div class="item ${o.cls || ''}" style="--c:${tcol(it.r)}" ${o.attr || ''}><i class="shine"></i>
-    <span class="w">${w != null ? WEAR[w].s : ''}</span>${x.st ? '<span class="stt">ST™</span>' : it.t === 'sv' ? '<span class="stt sv">SV</span>' : ''}
+    <span class="w">${w != null ? WEAR[w].s : ''}</span>${x.st ? '<span class="stt">ST™</span>' : it.t === 'sv' ? '<span class="stt sv">SV</span>' : ''}${x.fav ? '<span class="fav" title="Избранное">♥</span>' : ''}${o.got ? '<span class="got" title="Есть в альбоме">✓</span>' : ''}
     <img loading="lazy" src="${img(it.img)}" alt="">
     <div class="nm">${esc(title)}</div><div class="sub">${esc(sub)}</div>
     ${x.stickers?.length ? `<div class="sticker-strip">${stickerImages(x)}</div>` : ''}${o.extra || ''}<div class="pr">${fmt(price)}</div>${o.info ? `<button class="ibtn" data-info="${x.u}">i</button>` : ''}</div>`;
@@ -388,7 +402,7 @@ function addXP(x) {
   S.xp += x;
   while (S.lvl < LVL_MAX && S.xp >= lvlNeed(S.lvl)) {
     S.xp -= lvlNeed(S.lvl); S.lvl++;
-    const bonus = Math.round(S.lvl * 0.6 * incomeMult() * 100) / 100;
+    const bonus = Math.round((S.lvl * 0.6 * incomeMult() + baseSec() * 30) * 100) / 100;
     addMoney(bonus); toast(`Уровень ${S.lvl}!`, `Награда ${fmt(bonus)}`, 'good');
     if (S.lvl >= LVL_MAX) toast('Максимальный уровень', 'Получите медаль за службу в профиле', 'gold');
   }
@@ -396,8 +410,8 @@ function addXP(x) {
 
 // ---------- кликер ----------
 let combo = 1, lastClick = 0;
-$('#clickBtn').addEventListener('pointerdown', e => {
-  e.preventDefault();
+$('#clickBtn').addEventListener('pointerdown', e => { e.preventDefault(); doClick(e.clientX, e.clientY); });
+function doClick(cx, cy) {
   const now = performance.now();
   combo = now - lastClick < 650 ? Math.min(comboMax(S.up.combo), combo + 0.02) : Math.max(1, combo);
   lastClick = now;
@@ -411,11 +425,52 @@ $('#clickBtn').addEventListener('pointerdown', e => {
   const f = document.createElement('div');
   f.className = 'floater' + (crit ? ' crit' : '');
   f.textContent = (crit ? 'HEADSHOT +' : '+') + fmt(v);
-  f.style.left = (e.clientX - r.left - 30 + (rnd() * 40 - 20)) + 'px'; f.style.top = (e.clientY - r.top - 40) + 'px';
+  f.style.left = (cx - r.left - 30 + (rnd() * 40 - 20)) + 'px'; f.style.top = (cy - r.top - 40) + 'px';
   zone.append(f); setTimeout(() => f.remove(), 1000);
-  if (crit) FX.burst(e.clientX, e.clientY, ['#ffc15e', '#ff9f1c', '#fff'], 30, 6, true);
+  if (crit) FX.burst(cx, cy, ['#ffc15e', '#ff9f1c', '#fff'], 30, 6, true);
   const btn = $('#clickBtn'); btn.classList.add('hit'); setTimeout(() => btn.classList.remove('hit'), 70);
   renderCombo();
+}
+// пробел — клик в кликере, открытие на странице кейса; Enter/пробел в окне дропа — «Ещё раз»
+document.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  if (e.code !== 'Space' && e.key !== 'Enter') return;
+  if (!$('#modal').hidden) { const again = $('#dAgain'); if (again) { e.preventDefault(); again.click(); } return; }
+  if (curTab === 'clicker' && e.code === 'Space') {
+    e.preventDefault();
+    const r = $('#clickBtn').getBoundingClientRect();
+    doClick(r.left + r.width * (0.3 + rnd() * 0.4), r.top + r.height * (0.3 + rnd() * 0.4));
+  } else if (curTab === 'open') { e.preventDefault(); $('#openBtn').click(); }
+});
+
+// бонус-дроп: золотой кейс появляется в кликере раз в 1.5–4 минуты на 12 секунд
+let bonusAt = performance.now() + 60e3 + rnd() * 60e3, bonusHide = 0;
+const BONUS = [
+  [45, () => { const v = Math.max(0.25, baseSec() * 120 + clickBase(S.up.click) * incomeMult() * 80); addMoney(v); return ['Тайник', '+' + fmt(v)]; }],
+  [30, () => { boost.click = 5; boost.clickUntil = Date.now() + 15e3; return ['Раш!', 'Клик ×5 на 15 секунд']; }],
+  [25, () => { boost.auto = 4; boost.autoUntil = Date.now() + 30e3; return ['Овертайм', 'Автокликер ×4 на 30 секунд']; }],
+];
+function tickBonus(now) {
+  const el = $('#bonusDrop');
+  if (!el.hidden && now > bonusHide) { el.hidden = true; bonusAt = now + 90e3 + rnd() * 150e3; }
+  if (el.hidden && now > bonusAt && curTab === 'clicker' && !document.hidden) {
+    el.style.left = (8 + rnd() * 76) + '%'; el.style.top = (18 + rnd() * 50) + '%';
+    el.hidden = false; bonusHide = now + 12e3;
+  }
+  const line = $('#boostLine'), t = Date.now(), parts = [];
+  if (t < boost.clickUntil) parts.push(`🔥 Клик ×${boost.click} · ${Math.ceil((boost.clickUntil - t) / 1000)} с`);
+  if (t < boost.autoUntil) parts.push(`⚡ Автокликер ×${boost.auto} · ${Math.ceil((boost.autoUntil - t) / 1000)} с`);
+  line.hidden = !parts.length; line.textContent = parts.join('  ·  ');
+}
+$('#bonusDrop').addEventListener('click', e => {
+  const el = e.currentTarget, r = el.getBoundingClientRect();
+  el.hidden = true; bonusAt = performance.now() + 90e3 + rnd() * 150e3;
+  let q = rnd() * 100, f = BONUS[0][1];
+  for (const [w, fn] of BONUS) { if (q < w) { f = fn; break; } q -= w; }
+  const [title, text] = f();
+  S.st.bonuses++; beep('rare'); toast('🎁 ' + title, text, 'gold');
+  FX.burst(r.left + r.width / 2, r.top + r.height / 2, ['#ffd45c', '#ff9f1c', '#fff'], 90, 10);
+  renderTop(); save(); checkAch(); if (curTab === 'clicker') renderClicker();
 });
 $('#clickBtn').addEventListener('pointermove', e => {
   const r = e.currentTarget.getBoundingClientRect();
@@ -454,7 +509,7 @@ document.addEventListener('click', e => {
   S.up[k]++; beep('coin'); RENDER[curTab](); renderTop(); save(); checkAch();
 });
 const today = () => new Date().toISOString().slice(0, 10);
-const dailyReward = () => Math.round((1 + Math.min(S.daily.streak, 6) * 0.75) * incomeMult() * (1 + S.lvl * 0.05) * 100) / 100;
+const dailyReward = () => Math.round((1 + Math.min(S.daily.streak, 6) * 0.75) * (incomeMult() * (1 + S.lvl * 0.05) + baseSec() * 180) * 100) / 100;
 function renderDaily() {
   $('#daily').innerHTML = S.daily.last === today()
     ? `<span class="muted small">Ежедневная награда получена · серия ${S.daily.streak} дн.</span>`
@@ -481,7 +536,7 @@ function genMission() {
   ];
   if (S.st.stDrops > 0 || S.st.opened >= 30) opts.push(() => ({ type: 'st', goal: 1 }));
   if (S.unl.tradeup) opts.push(() => ({ type: 'tradeup', goal: 1 + Math.floor(rnd() * 2) }));
-  if (['coinflip', 'crash', 'roulette', 'mines', 'tower', 'jackpot'].some(k => S.unl[k])) opts.push(() => ({ type: 'game', goal: 2 + Math.floor(rnd() * 3) }));
+  if (['coinflip', 'crash', 'roulette', 'mines', 'tower', 'jackpot', 'battle'].some(k => S.unl[k])) opts.push(() => ({ type: 'game', goal: 2 + Math.floor(rnd() * 3) }));
   if (S.unl.sticker) opts.push(() => ({ type: 'kind', kind: 'sticker', goal: 2 + Math.floor(rnd() * 4) }));
   if (S.unl.souvenir) opts.push(() => ({ type: 'kind', kind: 'souvenir', goal: 1 + Math.floor(rnd() * 3) }));
   const used = new Set(S.missions.map(x => x.type + (x.kind || '')));
@@ -489,7 +544,8 @@ function genMission() {
   do { o = pick(opts)(); } while (used.has(o.type + (o.kind || '')) && ++tries < 20);
   const baseReward = {combo:.35, tier:1.2, st:1.5, tradeup:2, game:.6, kind:.8, open:.6, click:1, sell:.5}[o.type];
   const effort = o.type === 'click' ? o.goal*.06 : o.type === 'open' || o.type === 'kind' ? o.goal*.12 : o.type === 'sell' ? o.goal*.03 : 0;
-  o.prog = 0; o.reward = Math.round((baseReward + effort) * Math.min(3,m) * (1 + r*.12) * 100) / 100;
+  const secs = {combo:20, tier:60, st:90, tradeup:120, game:40, kind:40, open:45, click:30, sell:20}[o.type];
+  o.prog = 0; o.reward = Math.round(((baseReward + effort) * Math.min(3,m) * (1 + r*.12) + baseSec() * secs) * 100) / 100;
   return o;
 }
 function missionText(o) {
@@ -563,11 +619,30 @@ function renderCases() {
     return `<div style="--case-accent:${b.color || 'var(--acc)'}" class="case-card ${canPay(cost) && customReady(b) ? '' : 'locked'}" data-box="${i}">
       <span class="yr">${b.k === 'custom' ? (customReady(b) ? CUSTOM_SERIES[b.series] || '✦ АВТОРСКИЙ' : '🔒 ЗАКРЫТ') : b.date.slice(0, 4)}</span>${b.g[6] ? '<span class="tag">★</span>' : ''}
       <img loading="lazy" src="${img(b.img)}" alt="">
-      <div class="nm">${esc(b.n)}</div><div class="pr">${fmt(cost)}</div>${b.k === 'custom' ? `<small class="custom-desc">${esc(b.desc)}</small><small class="custom-req">${customReady(b) ? 'Без ключа · возврат ~' + Math.round(boxEV(b)/cost*100) + '%' : customRequirement(b)}</small>` : ''}</div>`;
+      <div class="nm">${esc(b.n)}</div><div class="pr">${fmt(cost)}</div>${albumBar(b)}${b.k === 'custom' ? `<small class="custom-desc">${esc(b.desc)}</small><small class="custom-req">${customReady(b) ? 'Без ключа · возврат ~' + Math.round(boxEV(b)/cost*100) + '%' : customRequirement(b)}</small>` : ''}</div>`;
   }).join('') || '<div class="empty">Ничего не найдено. Измените поиск или фильтры.</div>';
   $('#customResult').textContent = kind === 'custom' ? `Показано ${list.length} из ${BOXES.filter(b=>b.k==='custom').length} · доступно ${list.filter(x=>customReady(x.b)).length}` : '';
 }
 RENDER.cases = renderCases;
+function albumProg(b) { const pool = albumPool(b); return [pool.filter(i => S.found[keyOf(ITEMS[i])]).length, pool.length]; }
+function albumBar(b) {
+  const [have, total] = albumProg(b);
+  if (!have) return '';
+  return `<div class="alb ${S.album[b.n] ? 'done' : ''}" title="Альбом: ${have} из ${total}"><i style="width:${have / total * 100}%"></i></div>`;
+}
+// первый дроп предмета отмечается в альбоме; полностью собранный контейнер даёт награду и +1% дохода
+function markFound(x) {
+  const k = keyOf(ITEMS[x.i]); if (S.found[k]) return;
+  S.found[k] = 1;
+  for (const bi of inBoxes.get(x.i) || []) {
+    const b = BOXES[bi];
+    if (S.album[b.n] || !albumPool(b).every(i => S.found[keyOf(ITEMS[i])])) continue;
+    S.album[b.n] = Date.now();
+    const rew = Math.round(Math.max(1, boxCost(b) * 5) * 100) / 100;
+    addMoney(rew); beep('rare');
+    toast('📗 Коллекция собрана', `${b.n}: +${fmt(rew)} и +1% дохода навсегда`, 'gold');
+  }
+}
 $('#kindTabs').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (b) { S.set.kind = b.dataset.kind; renderCases(); } });
 $('#seriesFilters').addEventListener('click', e=>{const b=e.target.closest('[data-series]');if(b){customSeries=b.dataset.series;renderCases();}});
 $('#accessFilter').addEventListener('change',e=>{customAccess=e.target.value;renderCases();});
@@ -606,17 +681,20 @@ function openBoxPage(bi) {
     b.g[t].forEach(i => {
       const it = ITEMS[i], ps = it.p.filter(v => v != null), lo = Math.min(...ps);
       const hi = b.variants ? variantPrice(i,b.variants[i],false) : Math.max(...ps, ...(it.st || []).filter(v => v != null));
-      rows.push(itemCard({ i, w: b.variants?.[i] }, { price: b.variants ? hi : lo, extra: `<div class="chance">${pct(share)}${!b.variants && hi > lo ? ' · до ' + fmt(hi) : ''}</div>` }));
+      rows.push(itemCard({ i, w: b.variants?.[i] }, { got: !!S.found[keyOf(it)], price: b.variants ? hi : lo, extra: `<div class="chance">${pct(share)}${!b.variants && hi > lo ? ' · до ' + fmt(hi) : ''}</div>` }));
     });
   });
   $('#caseContents').innerHTML = rows.join('');
+  const [have, total] = albumProg(b);
+  $('#albumInfo').innerHTML = total ? (S.album[b.n] ? `· 📗 альбом собран (+1% дохода)` : `· альбом ${have}/${total} · за полный сбор ${fmt(Math.max(1, boxCost(b) * 5))} и +1% дохода`) : '';
+  $('#autoSell').value = S.set.autoSell || '';
   odds.forEach(([t]) => t < 6 && b.g[t].forEach(i => { new Image().src = img(ITEMS[i].img, '128fx96f'); }));
   showTab('open');
 }
 RENDER.open = () => {};
 function renderQty() {
   const b = BOXES[curBox];
-  $('#qty').innerHTML = [1, 2, 3, 4, 5].map(n => `<button class="${n === qty ? 'on' : ''}" data-q="${n}">${n}</button>`).join('');
+  $('#qty').innerHTML = [1, 2, 3, 5, 10].map(n => `<button class="${n === qty ? 'on' : ''}" data-q="${n}">${n}</button>`).join('');
   const btn = $('#openBtn');
   btn.textContent = `Открыть ${qty > 1 ? '×' + qty + ' ' : ''}· ${fmt(boxCost(b) * qty)}`;
   btn.disabled = rolling || !customReady(b);
@@ -626,6 +704,7 @@ function renderQty() {
 $('#qty').addEventListener('click', e => { const b = e.target.closest('[data-q]'); if (b && !rolling) { qty = +b.dataset.q; renderQty(); } });
 $('#backToCases').addEventListener('click', () => showTab('cases'));
 $('#fastOpen').addEventListener('change', e => { S.set.fast = e.target.checked; save(); });
+$('#autoSell').addEventListener('change', e => { S.set.autoSell = Math.max(0, Math.round(+e.target.value * 100) / 100 || 0); e.target.value = S.set.autoSell || ''; save(); });
 
 function rollTier(b) {
   let r = rnd();
@@ -642,8 +721,13 @@ function newItem(i, c, o = {}) {
   const st = o.st ?? (!!it.st && !!box && box.k !== 'souvenir' && rnd() < 0.1 + 0.01 * S.up.stattrak);
   return { u: S.uid++, i, c, fl: Math.min(0.999999, +fl.toFixed(6)), st: !!st, s: Math.floor(rnd() * 1000), t: Date.now() };
 }
+function rollDrop(bi) {
+  const b = BOXES[bi], i = pick(b.g[rollTier(b)]);
+  return b.variants ? newItem(i, origin.get(i), { w: b.variants[i], st: false }) : newItem(i, bi);
+}
 function trackDrop(x) {
   const it = ITEMS[x.i], p = priceOf(x);
+  markFound(x);
   S.st.dropValue += p;
   if (it.r === 6) S.st.knives++;
   if (x.st) { S.st.stDrops++; ev('st'); }
@@ -667,11 +751,7 @@ $('#openBtn').addEventListener('click', async () => {
   rolling = true; renderQty();
   S.st.opened += qty; S.st.spent += cost;
   const drops = [];
-  for (let k = 0; k < qty; k++) {
-    const i = pick(b.g[rollTier(b)]);
-    const x = b.variants ? newItem(i, origin.get(i), {w:b.variants[i],st:false}) : newItem(i, curBox);
-    drops.push(x); S.inv.push(x); trackDrop(x);
-  }
+  for (let k = 0; k < qty; k++) { const x = rollDrop(curBox); drops.push(x); S.inv.push(x); trackDrop(x); }
   ev('open', qty); ev('kind', qty, { kind: b.k === 'custom' && ITEMS[drops[0].i].t === 's' ? 'sticker' : b.k });
   addXP(20 * qty); save(); renderTop(); renderNav();
   const fast = S.set.fast, hero = $('#hero');
@@ -680,8 +760,9 @@ $('#openBtn').addEventListener('click', async () => {
     await wait(450); hero.classList.add('flash'); await wait(150);
   }
   const N = 56, WIN = 48, area = $('#rollArea');
-  area.innerHTML = drops.map(() => `<div class="roll ${qty > 1 ? 'compact' : ''}"><i class="pin-t"></i><i class="pin-b"></i><div class="strip"></div></div>`).join('');
+  area.innerHTML = drops.map(() => `<div class="roll ${qty > 5 ? 'compact mini' : qty > 1 ? 'compact' : ''}"><i class="pin-t"></i><i class="pin-b"></i><div class="strip"></div></div>`).join('');
   const rolls = $$('.roll', area), dur = fast ? 900 : 6000;
+  const lag = qty > 5 ? 80 : 200;
   rolls.forEach((r, k) => {
     const tiles = [];
     for (let t = 0; t < N; t++) tiles.push(t === WIN ? drops[k].i : pick(b.g[rollTier(b)]));
@@ -690,7 +771,7 @@ $('#openBtn').addEventListener('click', async () => {
     const tw = strip.firstElementChild.getBoundingClientRect().width;
     const target = -(WIN * tw + tw / 2 - r.clientWidth / 2) + (rnd() - 0.5) * tw * 0.8;
     strip.getBoundingClientRect();
-    strip.style.transition = `transform ${dur + k * 200}ms cubic-bezier(.08,.62,.1,1)`;
+    strip.style.transition = `transform ${dur + k * lag}ms cubic-bezier(.08,.62,.1,1)`;
     strip.style.transform = `translateX(${target}px)`;
     if (k === 0 && !fast) {
       let last = -1;
@@ -702,9 +783,9 @@ $('#openBtn').addEventListener('click', async () => {
       };
       requestAnimationFrame(tick);
     }
-    setTimeout(() => strip.children[WIN].classList.add('win'), dur + k * 200);
+    setTimeout(() => strip.children[WIN].classList.add('win'), dur + k * lag);
   });
-  await wait(dur + (qty - 1) * 200 + 300);
+  await wait(dur + (qty - 1) * lag + 300);
   rolling = false; renderQty(); showDrops(drops); checkAch();
 });
 
@@ -724,15 +805,19 @@ function celebrate(top) {
   if (top === 6 && S.set.fx) { document.body.classList.add('shake-screen'); setTimeout(() => document.body.classList.remove('shake-screen'), 500); }
 }
 function showDrops(drops) {
-  const total = drops.reduce((s, x) => s + priceOf(x), 0);
+  const all = drops.reduce((s, x) => s + priceOf(x), 0);
   const top = Math.max(...drops.map(x => ITEMS[x.i].r));
   beep(top >= 4 ? 'rare' : 'win');
   if (top === 6) toast('★ Редкий особый предмет!', fullName(drops.find(x => ITEMS[x.i].r === 6).i), 'gold');
-  const body = drops.length === 1 ? dropDetails(drops[0])
-    : `<div class="item-grid small">${drops.map(x => itemCard(x)).join('')}</div><p class="muted" style="text-align:center">Итого: <b style="color:var(--good)">${fmt(total)}</b></p>`;
+  // автопродажа: дешёвое продаётся сразу, ножи и перчатки — никогда
+  const lim = S.set.autoSell, auto = new Set(lim > 0 ? drops.filter(x => ITEMS[x.i].r < 6 && priceOf(x) < lim).map(x => x.u) : []);
+  if (auto.size) sellUids([...auto]);
+  const kept = drops.filter(x => !auto.has(x.u)), total = kept.reduce((s, x) => s + priceOf(x), 0);
+  const body = drops.length === 1 ? dropDetails(drops[0]) + (auto.size ? '<p class="muted" style="text-align:center">Продано автоматически</p>' : '')
+    : `<div class="item-grid small">${drops.map(x => itemCard(x, auto.has(x.u) ? { cls: 'dim', extra: '<small class="sold">продано</small>' } : {})).join('')}</div><p class="muted" style="text-align:center">Дроп: <b style="color:var(--good)">${fmt(all)}</b>${auto.size ? ` · автопродажа ${auto.size} шт.` : ''}</p>`;
   modal(`<h2>${drops.length === 1 ? 'Вам выпало' : 'Ваш дроп'}<button class="btn ghost" data-close>✕</button></h2>${body}
-    <div class="modal-actions"><button class="btn" id="dSell">Продать · ${fmt(total)}</button><button class="btn primary" data-close>В инвентарь</button><button class="btn" id="dAgain">Ещё раз</button></div>`, box => {
-    $('#dSell', box).onclick = () => { sellUids(drops.map(x => x.u)); closeModal(); };
+    <div class="modal-actions">${kept.length ? `<button class="btn" id="dSell">Продать · ${fmt(total)}</button><button class="btn primary" data-close>В инвентарь</button>` : '<button class="btn" data-close>Закрыть</button>'}<button class="btn ${kept.length ? '' : 'primary'}" id="dAgain" title="Enter">Ещё раз</button></div>`, box => {
+    const sell = $('#dSell', box); if (sell) sell.onclick = () => { sellUids(kept.map(x => x.u)); closeModal(); };
     $('#dAgain', box).onclick = () => { closeModal(); $('#rollArea').innerHTML = heroHTML(BOXES[curBox]); $('#openBtn').click(); };
   });
   celebrate(top);
@@ -772,18 +857,18 @@ function showStickerCraft(u) {
 }
 
 // ---------- инвентарь ----------
-const INV_KINDS = { all: ['Все', () => true], w: ['Оружие', it => it.t === 'w' || it.t === 'sv'], k: ['★ Ножи и перчатки', it => it.t === 'k'], s: ['Наклейки', it => it.t === 's'], p: ['Нашивки и пины', it => it.t === 'patch' || it.t === 'pin'] };
+const INV_KINDS = { all: ['Все', () => true], fav: ['♥ Избранное', (it, x) => x.fav], w: ['Оружие', it => it.t === 'w' || it.t === 'sv'], k: ['★ Ножи и перчатки', it => it.t === 'k'], s: ['Наклейки', it => it.t === 's'], p: ['Нашивки и пины', it => it.t === 'patch' || it.t === 'pin'] };
 const invSel = new Set();
 let invLimit = 240;
 function sortedInv(sort, q, filt = () => true) {
-  let list = S.inv.filter(x => filt(ITEMS[x.i]));
+  let list = S.inv.filter(x => filt(ITEMS[x.i], x));
   if (q) list = list.filter(x => fullName(x.i, x.st).toLowerCase().includes(q));
   const by = { new: (a, b) => b.t - a.t || b.u - a.u, price: (a, b) => priceOf(b) - priceOf(a), cheap: (a, b) => priceOf(a) - priceOf(b), rarity: (a, b) => ITEMS[b.i].r - ITEMS[a.i].r || priceOf(b) - priceOf(a) }[sort];
   return list.sort(by);
 }
 function renderInv() {
   const ik = S.set.invKind;
-  $('#invTabs').innerHTML = Object.entries(INV_KINDS).map(([k, [n, f]]) => `<button data-ik="${k}" class="${k === ik ? 'on' : ''}">${n} <small>${S.inv.filter(x => f(ITEMS[x.i])).length}</small></button>`).join('');
+  $('#invTabs').innerHTML = Object.entries(INV_KINDS).map(([k, [n, f]]) => `<button data-ik="${k}" class="${k === ik ? 'on' : ''}">${n} <small>${S.inv.filter(x => f(ITEMS[x.i], x)).length}</small></button>`).join('');
   const list = sortedInv($('#invSort').value, $('#invSearch').value.trim().toLowerCase(), INV_KINDS[ik][1]);
   for (const u of [...invSel]) if (!S.inv.some(x => x.u === u)) invSel.delete(u);
   $('#invValue').textContent = fmt(S.inv.reduce((s, x) => s + priceOf(x), 0));
@@ -805,21 +890,23 @@ $('#invGrid').addEventListener('click', e => {
   const info = e.target.closest('[data-info]');
   if (info) { showItem(+info.dataset.info); return; }
   const c = e.target.closest('[data-u]'); if (!c) return;
-  const u = +c.dataset.u; invSel.has(u) ? invSel.delete(u) : invSel.add(u); renderInv();
+  const u = +c.dataset.u;
+  if (S.inv.find(x => x.u === u)?.fav) { showItem(u); return; } // избранное не выделяется под продажу
+  invSel.has(u) ? invSel.delete(u) : invSel.add(u); renderInv();
 });
 $('#selAll').addEventListener('click', () => {
-  if (invSel.size) invSel.clear(); else sortedInv('new', $('#invSearch').value.trim().toLowerCase(), INV_KINDS[S.set.invKind][1]).forEach(x => x.u !== S.eq && invSel.add(x.u));
+  if (invSel.size) invSel.clear(); else sortedInv('new', $('#invSearch').value.trim().toLowerCase(), INV_KINDS[S.set.invKind][1]).forEach(x => x.u !== S.eq && !x.fav && invSel.add(x.u));
   renderInv();
 });
 $('#sellSel').addEventListener('click', () => { sellUids([...invSel]); invSel.clear(); renderInv(); });
 $('#sellCheap').addEventListener('click', () => {
   modal(`<h2>Продать дешёвые<button class="btn ghost" data-close>✕</button></h2>
-    <p class="muted">Все предметы дешевле указанной цены, кроме ножей, перчаток, экипированного и скинов с наклейками.</p>
+    <p class="muted">Все предметы дешевле указанной цены, кроме ножей, перчаток, избранного, экипированного и скинов с наклейками.</p>
     <div class="game-row"><label>Дешевле $ <input type="number" id="cheapLim" value="1" min="0" step="0.1"></label><button class="btn primary" id="cheapGo">Продать</button></div>
     <p class="muted" id="cheapInfo"></p>`, box => {
     const upd = () => {
       const lim = +$('#cheapLim', box).value || 0;
-      const l = S.inv.filter(x => ITEMS[x.i].r < 6 && x.u !== S.eq && !(x.stickers || []).length && priceOf(x) < lim);
+      const l = S.inv.filter(x => ITEMS[x.i].r < 6 && x.u !== S.eq && !x.fav && !(x.stickers || []).length && priceOf(x) < lim);
       $('#cheapInfo', box).textContent = `${l.length} предм. на ${fmt(l.reduce((s, x) => s + priceOf(x), 0))}`;
       return l;
     };
@@ -846,10 +933,12 @@ function showItem(u) {
   modal(`<h2>Предмет<button class="btn ghost" data-close>✕</button></h2>${dropDetails(x)}
     <div class="modal-actions"><button class="btn primary" id="iSell">Продать · ${fmt(priceOf(x))}</button>
     ${canEq ? `<button class="btn" id="iEq">${S.eq === u ? 'Снять' : 'Экипировать (+' + Math.round(0.2 * Math.log10(1 + priceOf(x)) * 100) + '% дохода)'}</button>` : ''}
+    <button class="btn" id="iFav">${x.fav ? '♡ Убрать из избранного' : '♥ В избранное'}</button>
     ${ITEMS[x.i].t === 'w' ? '<button class="btn" id="iCraft">Наклейки · ' + (x.stickers || []).length + '/5</button>' : ''}<button class="btn" data-close>Закрыть</button></div>`,
   box => {
-    $('#iSell', box).onclick = () => { sellUids([u]); closeModal(); RENDER[curTab](); };
+    $('#iSell', box).onclick = () => { if (x.fav) { toast('Предмет в избранном', 'Сначала уберите его из избранного'); return; } sellUids([u]); closeModal(); RENDER[curTab](); };
     const craft = $('#iCraft', box); if (craft) craft.onclick = () => showStickerCraft(u);
+    $('#iFav', box).onclick = () => { x.fav = !x.fav; invSel.delete(u); save(); RENDER[curTab](); showItem(u); };
     const eq = $('#iEq', box);
     if (eq) eq.onclick = () => { S.eq = S.eq === u ? null : u; save(); closeModal(); RENDER[curTab](); toast(S.eq ? 'Экипировано' : 'Снято', fullName(x.i, x.st)); };
   });
@@ -919,13 +1008,13 @@ $('#tuClear').addEventListener('click', () => { tuSel = []; renderTU(); });
 $('#tuAuto').addEventListener('click', () => {
   if (!tuItems().length) {
     const groups = {};
-    sortedInv('cheap', '').filter(x => tuOk(x) && x.u !== S.eq).forEach(x => { const k = ITEMS[x.i].r + (x.st ? 's' : ''); (groups[k] = groups[k] || []).push(x); });
+    sortedInv('cheap', '').filter(x => tuOk(x) && x.u !== S.eq && !x.fav).forEach(x => { const k = ITEMS[x.i].r + (x.st ? 's' : ''); (groups[k] = groups[k] || []).push(x); });
     const gs = Object.values(groups);
     const g = gs.find(g => g.length >= (ITEMS[g[0].i].r === 5 ? 5 : 10)) || gs.sort((a, b) => b.length - a.length)[0];
     if (!g) { toast('Нет предметов для контракта'); return; }
     tuSel = [g[0].u];
   }
-  for (const x of sortedInv('cheap', '')) { if (tuItems().length >= tuCap()) break; if (!tuSel.includes(x.u) && tuEligible(x)) tuSel.push(x.u); }
+  for (const x of sortedInv('cheap', '')) { if (tuItems().length >= tuCap()) break; if (!tuSel.includes(x.u) && !x.fav && tuEligible(x)) tuSel.push(x.u); }
   renderTU();
 });
 $('#tuGo').addEventListener('click', () => {
@@ -974,7 +1063,6 @@ function renderUpCatalog() {
     list.push(v);
   }
   $('#upCatalog').innerHTML = list.map(v => itemCard(v, { price: v.p, cls: upTarget === v ? 'sel' : '', attr: `data-cat="${v.id}"` })).join('') || '<div class="empty">Ничего не найдено. Измените поиск или фильтры.</div>';
-  $('#customResult').textContent = kind === 'custom' ? `Показано ${list.length} из ${BOXES.filter(b=>b.k==='custom').length} · доступно ${list.filter(x=>customReady(x.b)).length}` : '';
 }
 $('#upSearch').addEventListener('input', renderUpCatalog);
 $('#tab-upgrade').addEventListener('click', e => {
@@ -1033,7 +1121,6 @@ function renderMarket() {
     list.push(v);
   }
   $('#mkGrid').innerHTML = list.map(v => itemCard(v, { price: v.p, cls: canPay(v.p) ? '' : 'locked', attr: `data-buy="${v.id}"` })).join('') || '<div class="empty">Ничего не найдено. Измените поиск или фильтры.</div>';
-  $('#customResult').textContent = kind === 'custom' ? `Показано ${list.length} из ${BOXES.filter(b=>b.k==='custom').length} · доступно ${list.filter(x=>customReady(x.b)).length}` : '';
 }
 RENDER.market = renderMarket;
 $('#mkTabs').addEventListener('click', e => { const b = e.target.closest('[data-mk]'); if (b) { S.set.mkKind = b.dataset.mk; renderMarket(); } });
@@ -1057,7 +1144,7 @@ $('#mkGrid').addEventListener('click', e => {
 });
 
 // ---------- казино ----------
-const GAMES = { crash: ['🚀', 'Краш'], coinflip: ['🪙', 'Монетка'], roulette: ['🎡', 'Рулетка'], mines: ['💣', 'Мины'], tower: ['🗼', 'Башня'], jackpot: ['💰', 'Джекпот'] };
+const GAMES = { battle: ['⚔️', 'Батл кейсов'], crash: ['🚀', 'Краш'], coinflip: ['🪙', 'Монетка'], roulette: ['🎡', 'Рулетка'], mines: ['💣', 'Мины'], tower: ['🗼', 'Башня'], jackpot: ['💰', 'Джекпот'] };
 const hist = {};
 function addHist(id, html) { (hist[id] = hist[id] || []).unshift(html); hist[id].length = Math.min(hist[id].length, 16); const el = $('#' + id); if (el) el.innerHTML = hist[id].join(''); }
 function betInput(id, val = 1) { return `<label>Ставка <input id="${id}" type="number" min="0.01" step="0.01" value="${val}"></label><button class="btn ghost" data-half="${id}">½</button><button class="btn ghost" data-dbl="${id}">×2</button><button class="btn ghost" data-max="${id}">Всё</button>`; }
@@ -1109,13 +1196,71 @@ const GAME_UI = {
     <div class="game-row"><span class="muted">Ваша ставка: <b id="jpVal">$0</b></span><button class="btn primary" id="jpGo" disabled>Начать раунд</button></div>
     <h3 class="muted-h">Выберите скины</h3><div id="jpInv" class="item-grid small scroll"></div>`,
 };
+// батл: те же кейсы, что можно открыть обычно; дороже суммарный дроп — забираешь всё
+const battleBoxes = () => BOXES.map((b, i) => ({ b, i })).filter(({ b }) => (b.k === 'custom' && customReady(b)) || b.k === 'case' || b.k === 'terminal').sort((x, y) => boxCost(x.b) - boxCost(y.b));
+GAME_UI.battle = () => `<h2>Батл кейсов</h2><p class="muted">Вы и боты открываете один и тот же кейс несколько раундов. У кого суммарный дроп дороже, тот забирает все предметы. Платите только за свои открытия.</p>
+    <div class="game-row"><label>Кейс <select id="btBox">${battleBoxes().map(({ b, i }) => `<option value="${i}" ${b.n === (S.set.btBox || 'Разминка') ? 'selected' : ''}>${esc(b.n)} · ${fmt(boxCost(b))}</option>`).join('')}</select></label>
+    <label>Раундов <select id="btRounds">${[1, 2, 3, 5].map(n => `<option ${n === 3 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    <label>Соперников <select id="btBots">${[1, 2, 3].map(n => `<option ${n === 1 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    <button class="btn primary" id="btGo">Начать</button></div><div id="btArena" class="bt-arena"></div>`;
 const GAME_INIT = {};
+GAME_INIT.battle = () => {
+  const upd = () => { const b = BOXES[+$('#btBox').value]; $('#btGo').textContent = b ? `Начать · ${fmt(boxCost(b) * +$('#btRounds').value)}` : 'Начать'; };
+  ['#btBox', '#btRounds'].forEach(q => $(q).addEventListener('change', upd)); upd();
+};
 const GA = $('#gameArea');
 GA.addEventListener('click', e => {
   const t = e.target.closest('[data-half],[data-dbl],[data-max]'); if (!t) return;
   const inp = $('#' + (t.dataset.half || t.dataset.dbl || t.dataset.max)); if (!inp) return;
   const v = +inp.value || 0;
   inp.value = (t.dataset.half ? Math.max(0.01, v / 2) : t.dataset.dbl ? v * 2 : Math.floor(S.money * 100) / 100).toFixed(2);
+});
+
+GA.addEventListener('click', async e => {
+  if (e.target.id !== 'btGo' || busyGame) return;
+  const bi = +$('#btBox').value, b = BOXES[bi], rounds = +$('#btRounds').value, nb = +$('#btBots').value;
+  if (!b || !customReady(b)) return;
+  const cost = boxCost(b) * rounds;
+  if (!pay(cost)) return;
+  busyGame = true; e.target.disabled = true; S.set.btBox = b.n;
+  S.st.battles++; S.st.opened += rounds; S.st.spent += cost; ev('open', rounds); addXP(20 * rounds);
+  renderTop(); save();
+  const names = BOT_NAMES.slice().sort(() => rnd() - 0.5);
+  const ps = [{ n: 'Вы', me: true, c: JP_COL[0], d: [], v: 0 }, ...Array.from({ length: nb }, (_, k) => ({ n: names[k], c: JP_COL[k + 1], d: [], v: 0 }))];
+  const arena = $('#btArena');
+  arena.style.setProperty('--n', ps.length);
+  arena.innerHTML = ps.map((p, k) => `<div class="bt-col" id="btc${k}" style="--c:${p.c}"><div class="bt-head"><div class="av">${esc(p.n[0].toUpperCase())}</div><div><b>${esc(p.n)}</b><small id="btv${k}">$0.00</small></div></div>
+    ${Array.from({ length: rounds }, (_, r) => `<div class="bt-slot" id="bts${k}-${r}"><img src="${img(b.img, '128fx96f')}" alt=""></div>`).join('')}</div>`).join('');
+  const step = S.set.fast ? 350 : 1100;
+  for (let r = 0; r < rounds; r++) {
+    $$('.bt-slot', arena).forEach(el => el.classList.toggle('spin', el.id.endsWith('-' + r)));
+    await wait(step);
+    let best = 0;
+    ps.forEach((p, k) => {
+      const x = rollDrop(bi); p.d.push(x); p.v += priceOf(x); best = Math.max(best, ITEMS[x.i].r);
+      const slot = $('#bts' + k + '-' + r, arena); slot.classList.remove('spin'); slot.innerHTML = itemCard(x, { cls: 'flip' });
+      $('#btv' + k, arena).textContent = fmt(p.v);
+    });
+    const lead = Math.max(...ps.map(p => p.v));
+    ps.forEach((p, k) => $('#btc' + k, arena).classList.toggle('lead', p.v === lead));
+    beep(best >= 4 ? 'rare' : 'tick');
+    await wait(step / 2);
+  }
+  const top = Math.max(...ps.map(p => p.v)), tied = ps.filter(p => p.v === top), win = pick(tied);
+  const pot = ps.reduce((s, p) => s + p.v, 0), mine = ps[0].v;
+  busyGame = false;
+  if (win.me) {
+    ps.forEach(p => p.d.forEach(x => { S.inv.push(x); trackDrop(x); }));
+    S.st.battleWins++; S.st.gameWins++; S.st.gambleNet += pot - cost; ev('game');
+    toast('Победа в батле!', `Забираете ${ps.reduce((s, p) => s + p.d.length, 0)} предм. на ${fmt(pot)}`, 'gold'); beep('rare');
+    FX.burst(innerWidth / 2, innerHeight / 2, ['#ffd45c', '#ff9f1c', '#fff', '#3ee08f'], 160, 12);
+  } else {
+    S.st.gambleNet -= cost; beep('err');
+    toast(`Батл выиграл ${win.n}`, `Ваш дроп ${fmt(mine)} против ${fmt(top)}`, 'bad');
+  }
+  arena.insertAdjacentHTML('afterbegin', `<div class="bt-result ${win.me ? 'win' : 'lose'}">${win.me ? `🏆 Вы победили · ${fmt(pot)} в инвентаре` : `Победил ${esc(win.n)} · ${fmt(top)}`}</div>`);
+  const go = $('#btGo'); if (go) go.disabled = false;
+  save(); renderTop(); renderNav(); checkAch();
 });
 
 // краш
@@ -1383,6 +1528,11 @@ const ACH = [
   ['up', '⬆️', 'Апгрейд', 'Успешный апгрейд', () => S.st.upWins >= 1, 10],
   ['cr10', '🚀', 'Ракета', 'Краш на 10×', () => S.st.crashBest >= 10, 50],
   ['jp', '💰', 'Джекпот!', 'Выиграйте джекпот', () => S.st.jackpots >= 1, 50],
+  ['bt1', '⚔️', 'Гладиатор', 'Выиграйте батл кейсов', () => S.st.battleWins >= 1, 25],
+  ['bt10', '🛡️', 'Чемпион арены', '10 побед в батлах', () => S.st.battleWins >= 10, 250],
+  ['al1', '📗', 'Альбом', 'Соберите все предметы контейнера', () => albumCount() >= 1, 20],
+  ['al10', '📚', 'Библиотекарь', '10 собранных коллекций', () => albumCount() >= 10, 400],
+  ['bn25', '🎁', 'Охотник за тайниками', 'Поймайте 25 бонус-дропов', () => S.st.bonuses >= 25, 40],
   ['unl', '🔓', 'Всё открыто', 'Все разблокировки', () => UNLOCKS.every(u => S.unl[u[0]]), 500],
   ['l40', '⭐', 'Служба', 'Уровень 40', () => S.lvl >= LVL_MAX || S.medals > 0, 200],
   ['ge', '🌐', 'Global Elite', 'Высшее звание', () => rankOf() === RANKS.length - 1, 1000],
@@ -1407,7 +1557,8 @@ function renderProfile() {
     ['Открыто', st.opened], ['Потрачено', fmt(st.spent)], ['Стоимость дропа', fmt(st.dropValue)],
     ['Окупаемость', st.spent ? Math.round(st.dropValue / st.spent * 100) + '%' : '—'], ['Ножей и перчаток', st.knives], ['StatTrak™', st.stDrops],
     ['Наклеек', st.stickers], ['Сувениров', st.souvenirs], ['Продано на', fmt(st.sold)], ['Миссий', st.missions], ['Контрактов', st.tradeups],
-    ['Апгрейдов', `${st.upWins} / ${st.upWins + st.upLoss}`], ['Казино', (st.gambleNet >= 0 ? '+' : '') + fmt(st.gambleNet)],
+    ['Апгрейдов', `${st.upWins} / ${st.upWins + st.upLoss}`], ['Батлов', `${st.battleWins} / ${st.battles}`], ['Бонус-дропов', st.bonuses],
+    ['Альбом', `${albumCount()} колл. · +${albumCount()}% дохода`], ['Найдено предметов', `${Object.keys(S.found).length} / ${ITEMS.length}`], ['Казино', (st.gambleNet >= 0 ? '+' : '') + fmt(st.gambleNet)],
     ['Лучший краш', st.crashBest ? st.crashBest.toFixed(2) + '×' : '—'], ['Мин. float', st.lowFloat < 1 ? st.lowFloat.toFixed(6) : '—'],
     ['Инвентарь', `${S.inv.length} · ${fmt(invVal)}`], ['Лучший дроп', best != null ? `${fullName(best, st.best.st)} · ${fmt(st.best.p)}` : '—'],
   ];
@@ -1463,11 +1614,11 @@ setInterval(() => {
   const now = performance.now(), dt = (now - lastT) / 1000; lastT = now;
   const ps = perSec(); if (ps) addMoney(ps * dt);
   if (combo > 1 && now - lastClick > 650) { combo = Math.max(1, combo - dt * 0.6); if (curTab === 'clicker') renderCombo(); }
-  tickMoney();
+  tickMoney(); tickBonus(now);
   saveAcc += dt; uiAcc += dt;
   if (uiAcc > 1) {
     uiAcc = 0; checkAch();
-    if (curTab === 'clicker') { $('#perSec').textContent = fmt(perSec()); $('#quickUpg').innerHTML = Object.keys(UPG).filter(k => UPG[k].quick).map(upgRow).join(''); }
+    if (curTab === 'clicker') { $('#perSec').textContent = fmt(perSec()); $('#perClick').textContent = fmt(perClick()); $('#quickUpg').innerHTML = Object.keys(UPG).filter(k => UPG[k].quick).map(upgRow).join(''); }
     if (curTab === 'shop') renderShop();
   }
   if (saveAcc > 5) { saveAcc = 0; save(); }
@@ -1476,6 +1627,19 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) save(
 window.addEventListener('beforeunload', save);
 
 renderNav(); renderTop(); renderClicker(); checkAch();
+
+if (S.set.seen !== VERSION) {
+  if (S.st.opened || S.st.clicks) setTimeout(() => modal(`<h2>Обновление<button class="btn ghost" data-close>✕</button></h2>
+    <ul class="news">
+      <li><b>⚔️ Батлы кейсов.</b> Открывайте кейс против 1–3 ботов, победитель забирает весь дроп. Разблокировка в магазине.</li>
+      <li><b>📗 Альбом коллекций.</b> Первый дроп каждого предмета отмечается ✓. Собрали весь контейнер — награда ×5 от цены и +1% дохода навсегда.</li>
+      <li><b>🎁 Бонус-дроп.</b> В кликере время от времени появляется золотой кейс: деньги, клик ×5 или автокликер ×4.</li>
+      <li><b>✦ 6 новых авторских кейсов:</b> «Эконом-раунд», «Пистолетный раунд», «Зверинец», «Лесной пожар», «Подброс монеты», «Штыковая линия».</li>
+      <li><b>Удобство:</b> открытие ×10, автопродажа дешёвого дропа, ♥ избранное (защита от массовой продажи), пробел — клик и открытие, Enter — «Ещё раз».</li>
+      <li><b>Баланс:</b> ежедневная награда, награды миссий и уровней теперь растут вместе с автокликером.</li>
+    </ul><div class="modal-actions"><button class="btn primary" data-close>Играть</button></div>`), 900);
+  S.set.seen = VERSION; save();
+}
 
 // Shareable catalogue link preserves the same origin and browser save.
 if (new URLSearchParams(location.search).get('cases') === 'custom') {

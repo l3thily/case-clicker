@@ -3,9 +3,9 @@ const assert = require('node:assert/strict');
 global.window=global;
 require('../data/cases.js');require('../js/custom-cases.js');
 const boxes=buildCustomCases(GAME_DATA);
-assert.equal(boxes.length,58);
-assert.equal(new Set(boxes.map(b=>b.id)).size,58);
-assert.deepEqual(boxes.reduce((a,b)=>(a[b.series]=(a[b.series]||0)+1,a),{}),{classic:8,rarity:10,weapon:12,theme:12,sticker:10,elite:6});
+assert.equal(boxes.length,64);
+assert.equal(new Set(boxes.map(b=>b.id)).size,64);
+assert.deepEqual(boxes.reduce((a,b)=>(a[b.series]=(a[b.series]||0)+1,a),{}),{classic:8,rarity:11,weapon:14,theme:14,sticker:10,elite:7});
 assert.deepEqual(boxes,buildCustomCases(GAME_DATA));
 const boundaries=[[0,.07],[.07,.15],[.15,.38],[.38,.45],[.45,1]];
 for(const b of boxes){
@@ -50,4 +50,4 @@ assert.ok(Object.values(byId('autograph-desk').g).flat().every(i=>autograph.has(
 const signatures=boxes.map(b=>JSON.stringify([b.g,b.weights]));
 assert.equal(new Set(signatures).size,boxes.length,'Every case needs a distinct drop pool / risk profile');
 for(const b of boxes)assert.ok(require('node:fs').existsSync(require('node:path').join(__dirname,'..',b.img)));
-console.log('PASS: 58 distinct cases, strict themes, prices, covers and stable reordered data');
+console.log('PASS: 64 distinct cases, strict themes, prices, covers and stable reordered data');

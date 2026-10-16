@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="css/style.css?v=b0ef6fc10433">
+<link rel="stylesheet" href="css/style.css?v=48042e364968">
 </head>
 <body>
 <canvas id="bgfx" aria-hidden="true"></canvas>
@@ -47,8 +47,11 @@
               <svg class="combo-ring" viewBox="0 0 200 200"><circle cx="100" cy="100" r="92" class="cr-bg"/><circle cx="100" cy="100" r="92" class="cr-fg" id="comboArc"/></svg>
               <button class="click-btn" id="clickBtn" aria-label="Клик"><img id="clickImg" alt="" draggable="false"></button>
             </div>
+            <button class="bonus-drop" id="bonusDrop" hidden aria-label="Бонус-дроп"><img src="assets/custom/vault.svg" alt=""></button>
+            <div class="boost-line" id="boostLine" hidden></div>
             <div class="equip-line" id="equipLine"></div><div id="progressGuide" class="progress-guide"></div>
             <div class="daily" id="daily"></div>
+            <div class="hotkeys muted small">Пробел — клик</div>
           </div>
           <div class="side-panels">
             <div class="panel glass">
@@ -93,9 +96,11 @@
           <div class="qty" id="qty"></div>
           <button class="btn primary big" id="openBtn"></button>
           <label class="check"><input type="checkbox" id="fastOpen"> Быстро</label>
+          <label class="check" title="Предметы дешевле этой суммы продаются сразу после открытия. Ножи и перчатки не продаются.">Автопродажа до $ <input type="number" id="autoSell" min="0" step="0.05" placeholder="выкл" class="auto-sell"></label>
         </div>
+        <div class="hotkeys muted small">Пробел — открыть · Enter — ещё раз</div>
         <div class="odds" id="odds"></div>
-        <h3 class="muted-h">Содержимое</h3>
+        <h3 class="muted-h">Содержимое <span id="albumInfo" class="album-info"></span></h3>
         <div id="caseContents" class="item-grid small"></div>
       </section>
 
@@ -220,7 +225,7 @@
 <div class="toasts" id="toasts"></div>
 
 <script src="data/cases.js?v=aba4c034340a"></script>
-<script src="js/custom-cases.js?v=f024a951d3bb"></script>
-<script src="js/game.js?v=0f92a7e80df6"></script>
+<script src="js/custom-cases.js?v=6949d86cebcc"></script>
+<script src="js/game.js?v=aedfb5c63ff3"></script>
 </body>
 </html>

@@ -25,6 +25,7 @@ window.buildCustomCases = function (data) {
   add('full-spectrum','Полный спектр','Вся шкала: от синего до золотого','rarity','#71c5ff',13,130,8,{2:65,3:25,4:8,5:1.8,6:.2},'mixed');
   add('red-wire','Красный провод','99% армейское · 1% тайное','rarity','#ff5f66',7,42,2,{2:99,5:1});
   add('gold-frequency','Золотая частота','98% армейское · 2% редкий особый','rarity','#f7c85d',18,230,8,{2:98,6:2},'mixed');
+  add('coin-toss','Подброс монеты','50% армейское · 50% засекреченное','rarity','#c78bff',8,58,3,{2:50,4:50});
   // Each weapon series filters the actual weapon prefix, never a generic fallback.
   const weapons = [
     ['ak-club','Клуб Калашникова','AK-47',/^AK-47 \| /,'#f2a558',5,20,6],
@@ -39,6 +40,8 @@ window.buildCustomCases = function (data) {
     ['mac10-mixtape','Микстейп MAC-10','MAC-10',/^MAC-10 \| /,'#f193dd',3,11,1.5],
     ['scout-rooftop','Крыша со Scout','SSG 08',/^SSG 08 \| /,'#71bfcf',5,26,3],
     ['close-contact','Ближний контакт','Nova, XM1014, MAG-7 и Sawed-Off',/^(Nova|XM1014|MAG-7|Sawed-Off) \| /,'#c9a184',2,9,1],
+    ['eco-round','Эконом-раунд','FAMAS и Galil AR',/^(FAMAS|Galil AR) \| /,'#b8c97a',3,13,1.2],
+    ['pistol-round','Пистолетный раунд','Tec-9, Five-SeveN, CZ75-Auto, P2000 и Dual Berettas',/^(Tec-9|Five-SeveN|CZ75-Auto|P2000|Dual Berettas) \| /,'#9fb4d8',2,10,1],
   ];
   weapons.forEach(([id,n,weapon,match,color,level,opens,budget])=>add(id,n,'Только '+weapon,'weapon',color,level,opens,budget,{2:55,3:32,4:11,5:2},'w',match));
   // Colour / story themes are checked against skin names in the source catalogue.
@@ -55,6 +58,8 @@ window.buildCustomCases = function (data) {
     ['sandstorm','Песчаная буря','Пустынные и выгоревшие покрытия',/Desert|Sand|Safari|Dust|Arid|Scorched|Oasis/i,'#dbbb82',2,7,.7],
     ['abyss','Давление глубины','Море, кораллы и подводные сюжеты',/Ocean|Water|Aquamarine|Coral|Abyss|Poseidon|Undertow/i,'#56d6d4',13,115,15],
     ['mainframe','Взлом мейнфрейма','Роботы, схемы и цифровые покрытия',/Asiimov|Mecha|Cyber|Circuit|Mainframe|System|Digital|Player Two/i,'#88d9b2',11,90,12],
+    ['menagerie','Зверинец','Волки, тигры, змеи, акулы и другие звери',/Wolf|Tiger|Lion|Fox|Bear|Snake|Serpent|Viper|Cobra|Shark|Hawk|Eagle|Panther|Monkey|Kitsune|Jaguar|Raptor|Bunny|Frog/i,'#e0a46a',9,62,7],
+    ['wildfire','Лесной пожар','Огонь, пламя, лава и фениксы',/Fire|Flame|Inferno|Blaze|Ember|Lava|Magma|Phoenix|Pyre|Torch|Heat/i,'#ff7a45',12,100,12],
   ];
   themes.forEach(([id,n,desc,match,color,level,opens,budget])=>add(id,n,desc,'theme',color,level,opens,budget,{2:55,3:30,4:12,5:3},'w',match));
   add('paper-trail','Бумажный след','Только наклейки высшего класса','sticker','#d8d0bc',1,4,.2,{2:100},'s');
@@ -73,6 +78,7 @@ window.buildCustomCases = function (data) {
   add('butterfly-effect','Эффект бабочки','Только Butterfly Knife','elite','#c4a0ff',30,700,40,{6:100},'k',/Butterfly Knife/);
   add('karambit-orbit','Орбита керамбита','Только Karambit','elite','#ff9879',28,600,35,{6:100},'k',/Karambit/);
   add('doppler-lab','Лаборатория Доплера','Только ножи Doppler и Gamma Doppler','elite','#a182ef',32,820,30,{6:100},'k',/Doppler/);
+  add('bayonet-line','Штыковая линия','Только Bayonet и M9 Bayonet','elite','#ffb37a',26,520,30,{6:100},'k',/Bayonet/);
   add('event-horizon','Горизонт событий','50% армейское · 50% нож или перчатки','elite','#ffd27a',35,1000,25,{2:50,6:50},'mixed');
   const legacy = specs.map(([id,n,desc,color,level,opens,rtp,type,budget,weights])=>({id,n,desc,color,level,opens,rtp,type,budget,weights,series:'classic'}));
   const fromPools = new Map();
