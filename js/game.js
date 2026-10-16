@@ -1031,7 +1031,10 @@ $('#tuGo').addEventListener('click', () => {
 });
 
 // ---------- апгрейд ----------
-let upSel = [], upTarget = null, upSpinning = false, needleRot = 0;
+let upSel = [], upTarget = null, upSpinning = false, needleRot = 0, upMult = 0;
+const UP_MULTS = [1.5, 2, 3, 5, 10, 20];
+// диапазон цен для множителя: от ×m до ×m·1.25 (шанс примерно 90/m … 72/m %)
+const upRange = () => { const a = upInVal(); return upMult && a ? [a * upMult, a * upMult * 1.25] : [a * 1.05, Infinity]; };
 const upInVal = () => upSel.map(u => S.inv.find(x => x.u === u)).filter(Boolean).reduce((s, x) => s + priceOf(x), 0);
 const upChance = () => { const a = upInVal(); return upTarget && a > 0 && upTarget.p > a ? Math.min(0.9, a / upTarget.p * 0.9) : 0; };
 function renderUp() {
@@ -1047,24 +1050,32 @@ function renderUp() {
   $('#upChance').textContent = (ch * 100).toFixed(ch < 0.1 ? 2 : 1) + '%';
   $('#wheel').style.setProperty('--p', ch * 100);
   $('#upGo').disabled = !ch || upSpinning;
-  $('#multBtns').innerHTML = [1.5, 2, 3, 5, 10, 20].map(m => `<button data-m="${m}" ${a ? '' : 'disabled'}>×${m}</button>`).join('');
+  $('#multBtns').innerHTML = UP_MULTS.map(m => `<button data-m="${m}" class="${m === upMult ? 'on' : ''}" ${a ? '' : 'disabled'}>×${m}</button>`).join('');
   const inv = sortedInv('price', '').filter(x => x.u !== S.eq);
   $('#upInv').innerHTML = inv.length ? inv.slice(0, 300).map(x => itemCard(x, { cls: upSel.includes(x.u) ? 'sel' : '', attr: `data-upadd="${x.u}"` })).join('') : '<div class="empty">Инвентарь пуст</div>';
   renderUpCatalog();
 }
 RENDER.upgrade = renderUp;
-function renderUpCatalog() {
-  const a = upInVal(), q = $('#upSearch').value.trim().toLowerCase();
+function upCatalogList() {
+  const [lo, hi] = upRange(), q = $('#upSearch').value.trim().toLowerCase(), desc = $('#upSort').value === 'exp';
+  // CATALOG отсортирован по цене: берём отрезок [lo, hi] и идём с нужного конца
+  let from = CATALOG.findIndex(v => v.p >= lo); if (from < 0) from = CATALOG.length;
+  let to = hi === Infinity ? CATALOG.length : CATALOG.findIndex(v => v.p > hi); if (to < 0) to = CATALOG.length;
   const list = [];
-  let k = CATALOG.findIndex(v => v.p > a * 1.05); if (k < 0) k = CATALOG.length;
-  for (; k < CATALOG.length && list.length < 150; k++) {
-    const v = CATALOG[k];
+  for (let n = 0; n < to - from && list.length < 150; n++) {
+    const v = CATALOG[desc ? to - 1 - n : from + n];
     if (q && !fullName(v.i, v.st).toLowerCase().includes(q)) continue;
     list.push(v);
   }
+  return list;
+}
+function renderUpCatalog() {
+  const list = upCatalogList(), [lo, hi] = upRange();
+  $('#upRange').textContent = upMult && upInVal() ? `×${upMult}: ${fmt(lo)} – ${fmt(hi)}` : '';
   $('#upCatalog').innerHTML = list.map(v => itemCard(v, { price: v.p, cls: upTarget === v ? 'sel' : '', attr: `data-cat="${v.id}"` })).join('') || '<div class="empty">Ничего не найдено. Измените поиск или фильтры.</div>';
 }
 $('#upSearch').addEventListener('input', renderUpCatalog);
+$('#upSort').addEventListener('change', renderUpCatalog);
 $('#tab-upgrade').addEventListener('click', e => {
   if (upSpinning) return;
   let c;
@@ -1074,7 +1085,12 @@ $('#tab-upgrade').addEventListener('click', e => {
     renderUp();
   } else if ((c = e.target.closest('[data-uprm]'))) { upSel = upSel.filter(u => u !== +c.dataset.uprm); renderUp(); }
   else if ((c = e.target.closest('[data-cat]'))) { upTarget = CATALOG[+c.dataset.cat]; renderUp(); }
-  else if ((c = e.target.closest('[data-m]'))) { const want = upInVal() * +c.dataset.m; upTarget = CATALOG.find(v => v.p >= want) || CATALOG[CATALOG.length - 1]; renderUp(); }
+  else if ((c = e.target.closest('[data-m]'))) {
+    const m = +c.dataset.m;
+    upMult = upMult === m ? 0 : m; // повторное нажатие снимает фильтр
+    if (upMult) { const [lo, hi] = upRange(); upTarget = CATALOG.find(v => v.p >= lo && v.p <= hi) || null; if (!upTarget) toast('В этом диапазоне нет предметов'); }
+    $('#upCatalog').scrollTop = 0; renderUp();
+  }
   else if (e.target.closest('#upGo')) {
     const ch = upChance(); if (!ch) return;
     upSpinning = true; $('#upGo').disabled = true;
