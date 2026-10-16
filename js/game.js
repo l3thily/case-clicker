@@ -279,7 +279,7 @@ function toast(title, text = '', cls = '') {
   setTimeout(() => el.remove(), 3800);
   while ($('#toasts').children.length > 4) $('#toasts').firstChild.remove();
 }
-function modal(html, onBind) { $('#modalBox').innerHTML = html; $('#modal').hidden = false; onBind && onBind($('#modalBox')); }
+function modal(html, onBind) { $('#modalBox').classList.remove('reward-reveal'); $('#modalBox').style.removeProperty('--reward-color'); $('#modalBox').innerHTML = html; $('#modal').hidden = false; onBind && onBind($('#modalBox')); }
 function closeModal() { $('#modal').hidden = true; $('#modalBox').innerHTML = ''; }
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.closest('[data-close]')) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
@@ -822,8 +822,9 @@ $('#openBtn').addEventListener('click', async () => {
   addXP(20 * qty); save(); renderTop(); renderNav();
   const fast = S.set.fast, hero = $('#hero');
   if (hero && !fast) {
-    beep('open'); hero.classList.add('shake');
-    await wait(450); hero.classList.add('flash'); await wait(150);
+    beep('open');
+    if (S.set.fx) hero.classList.add('charging');
+    await wait(600);
   }
   const N = 56, WIN = 48, area = $('#rollArea');
   area.innerHTML = drops.map(() => `<div class="roll ${qty > 5 ? 'compact mini' : qty > 1 ? 'compact' : ''}"><i class="pin-t"></i><i class="pin-b"></i><div class="strip"></div></div>`).join('');
@@ -872,9 +873,14 @@ function patLine(x) {
   return out.length ? ' · ' + out.join(' · ') : '';
 }
 function celebrate(top) {
+  if (!S.set.fx || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = $('#modalBox');
+  box.style.setProperty('--reward-color', tcol(top));
+  box.classList.add('reward-reveal');
+  if (top < 4) return;
   const cols = top === 6 ? ['#e4ae39', '#ffd45c', '#fff6d5', '#ff9f1c'] : [tcol(top), '#fff', tcol(Math.max(0, top - 1))];
-  if (top >= 4) FX.burst(innerWidth / 2, innerHeight * 0.4, cols, top === 6 ? 220 : top === 5 ? 140 : 80, top === 6 ? 15 : 11);
-  if (top === 6 && S.set.fx) { document.body.classList.add('shake-screen'); setTimeout(() => document.body.classList.remove('shake-screen'), 500); }
+  const r = box.getBoundingClientRect();
+  FX.burst(r.left + r.width / 2, r.top + Math.min(r.height * 0.4, 220), cols, top === 6 ? 140 : top === 5 ? 90 : 50, top === 6 ? 8 : 6, true);
 }
 function showDrops(drops) {
   const all = drops.reduce((s, x) => s + priceOf(x), 0);
